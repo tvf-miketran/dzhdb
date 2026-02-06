@@ -1,4 +1,3 @@
-# app/routes/auth_routes.py
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.services.auth import AuthService
@@ -33,3 +32,26 @@ def me():
         employeeId=employee.employeeId,
         role=employee.role
     )
+
+@auth_bp.route("/reset-password", methods=["POST"])
+@jwt_required()
+def reset_password():
+    data = request.get_json()
+    employee_id = get_jwt_identity()
+
+    old_password = data.get("oldPassword")
+    new_password = data.get("newPassword")
+
+    if not old_password or not new_password:
+        return jsonify({"msg": "Missing required fields"}), 400
+
+    success = AuthService.reset_password(
+        employee_id=employee_id,
+        old_password=old_password,
+        new_password=new_password
+    )
+
+    if not success:
+        return jsonify({"msg": "Old password is incorrect"}), 400
+
+    return jsonify({"msg": "Password reset successfully"})

@@ -1,9 +1,6 @@
-# app/services/auth_service.py
 from flask_jwt_extended import create_access_token
-from werkzeug.security import generate_password_hash
 from app.dao.employee_dao import EmployeeDAO
 from app.utils.auth_helpers import verify_password
-from app import db
 
 
 class AuthService:
@@ -15,9 +12,21 @@ class AuthService:
         if not employee or not verify_password(password, employee.password):
             return None
 
-        token = create_access_token(identity=employee.employeeId)
-        return token
+        return create_access_token(identity=employee.employeeId)
 
     @staticmethod
     def get_current_employee(employee_id: str):
         return EmployeeDAO.get_by_employee_id(employee_id)
+
+    @staticmethod
+    def reset_password(employee_id: str, old_password: str, new_password: str) -> bool:
+        employee = EmployeeDAO.get_by_employee_id(employee_id)
+
+        if not employee:
+            return False
+
+        if not verify_password(old_password, employee.password):
+            return False
+
+        EmployeeDAO.update_password(employee, new_password)
+        return True
