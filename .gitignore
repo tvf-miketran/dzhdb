@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+venv/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Flask
+instance/
+*.log
+
+# Alembic
+migrations/versions/__pycache__/
+
+# Docker
+*.tar
+docker-compose.override.yml
+
+# Database
+*.sqlite3
+*.db
+.pgdata/
+
+# IDE
+.vscode/
+.idea/
+.history/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Secrets
+*.pem
+*.key
