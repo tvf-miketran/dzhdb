@@ -9,6 +9,10 @@ class EmployeeDAO:
         return Employee.query.filter_by(employeeId=employee_id).first()
     
     @staticmethod
+    def get_by_employee_email(email: str):
+        return Employee.query.filter_by(email=email).first()
+    
+    @staticmethod
     def update_password(employee: Employee, new_password: str):
         employee.password = generate_password_hash(new_password)
         db.session.commit()

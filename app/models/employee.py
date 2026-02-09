@@ -13,7 +13,9 @@ class Employee(db.Model):
         default=uuid.uuid4
     )
 
-    full_name = db.Column(db.String(255), nullable=False)
+    vn_full_name = db.Column(db.String(255), nullable=False)
+    
+    en_full_name = db.Column(db.String(255), nullable=False)
 
     employeeId = db.Column(
         db.String(100),
@@ -22,12 +24,13 @@ class Employee(db.Model):
         index=True
     )
 
+    email = db.Column(db.String(255), unique=True, nullable=False)
+
     password = db.Column(db.String(255), nullable=False)
 
     role = db.Column(
         db.Enum(
             "MEMBER",
-            "ODC_LEAD",
             "ADMIN",
             name="employee_role"
         ),
