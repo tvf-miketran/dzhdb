@@ -6,8 +6,8 @@ from app.utils.auth_helpers import verify_password
 class AuthService:
 
     @staticmethod
-    def login(employee_id: str, password: str):
-        employee = EmployeeDAO.get_by_employee_id(employee_id)
+    def login(email: str, password: str):
+        employee = EmployeeDAO.get_by_employee_email(email)
 
         if not employee or not verify_password(password, employee.password):
             return None

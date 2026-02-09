@@ -7,10 +7,12 @@ auth_bp = Blueprint("auth", __name__)
 @auth_bp.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
 
     token = AuthService.login(
-        employee_id=data.get("employeeId"),
-        password=data.get("password")
+        email=email,
+        password=password
     )
 
     if not token:
