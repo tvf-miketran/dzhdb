@@ -10,7 +10,7 @@ def admin_required(fn):
         verify_jwt_in_request()
 
         user = get_current_user()
-        if not user or user.role != "ADMIN":
+        if not user or user.authorize_role != "ADMIN":
             return jsonify({"msg": "Admin privilege required"}), 403
 
         return fn(*args, **kwargs)

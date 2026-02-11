@@ -19,7 +19,7 @@ class AuthService:
         return EmployeeDAO.get_by_employee_id(employee_id)
 
     @staticmethod
-    def reset_password(employee_id: str, old_password: str, new_password: str) -> bool:
+    def update_password(employee_id: str, old_password: str, new_password: str) -> bool:
         employee = EmployeeDAO.get_by_employee_id(employee_id)
 
         if not employee:
@@ -29,4 +29,14 @@ class AuthService:
             return False
 
         EmployeeDAO.update_password(employee, new_password)
+        return True
+    
+    @staticmethod
+    def reset_password(employee_id: str) -> bool:
+        employee = EmployeeDAO.get_by_employee_id(employee_id)
+
+        if not employee:
+            return False
+
+        EmployeeDAO.update_password(employee, employee.email)
         return True
