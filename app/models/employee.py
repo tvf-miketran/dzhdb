@@ -24,11 +24,13 @@ class Employee(db.Model):
         index=True
     )
 
+    description = db.Column(db.Text, nullable=True)
+
     email = db.Column(db.String(255), unique=True, nullable=False)
 
     password = db.Column(db.String(255), nullable=False)
 
-    role = db.Column(
+    authorize_role = db.Column(
         db.Enum(
             "MEMBER",
             "ADMIN",
@@ -56,3 +58,34 @@ class Employee(db.Model):
         onupdate=func.now(),
         nullable=False
     )
+
+    # ==========================================
+    # RELATIONSHIPS
+    # ==========================================
+    
+    # Employee owns their project memberships
+    # Xóa employee → Xóa tất cả project memberships
+    project_members = db.relationship(
+        'ProjectMember',
+        back_populates='employee',
+        cascade='all, delete-orphan'
+    )
+
+    # Weak relationship: Employee assigned to tickets
+    # Xóa employee → Tickets vẫn còn, chỉ mất assignment (user_id = NULL)
+    tickets = db.relationship(
+        'Ticket',
+        back_populates='employee'
+        # No cascade delete - tickets exist independently
+    )
+
+    # Employee owns their logwork records
+    # Xóa employee → Xóa tất cả logwork của employee đó
+    logworks = db.relationship(
+        'Logwork',
+        back_populates='employee',
+        cascade='all, delete-orphan'
+    )
+
+    def __repr__(self):
+        return f"<Employee {self.en_full_name}>"

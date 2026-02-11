@@ -32,7 +32,7 @@ def me():
 
     return jsonify(
         employeeId=employee.employeeId,
-        role=employee.role
+        authorize_role=employee.authorize_role
     )
 
 @auth_bp.route("/reset-password", methods=["POST"])
