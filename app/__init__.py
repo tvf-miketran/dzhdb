@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
+from sqlalchemy import text
 
 from app.config import Config
 
@@ -32,7 +33,21 @@ def create_app():
         }}
     )
 
+    from app.exceptions.handlers import register_error_handlers
+    register_error_handlers(app)
+
+    # from app.routes import init_api
+    # init_api(app)
+
     from app.routes import api_bp
     app.register_blueprint(api_bp, url_prefix="/api")
+
+    with app.app_context():
+        try:
+            db.session.execute(text("SELECT 1"))
+            print("✅ Kết nối database thành công!")
+        except Exception as e:
+            print("❌ Kết nối database thất bại!")
+            print(f"🔥 Lỗi: {str(e)}")
 
     return app

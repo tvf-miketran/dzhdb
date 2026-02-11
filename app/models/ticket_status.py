@@ -29,7 +29,7 @@ class TicketStatus(db.Model):
     # Weak relationship: Tickets can have a ticket type
     tickets = db.relationship(
         'Ticket',
-        back_populates='ticket_statuses'
+        back_populates='ticket_status'
     )
 
     def __repr__(self):

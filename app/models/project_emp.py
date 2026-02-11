@@ -42,7 +42,7 @@ class ProjectMember(db.Model):
 
     employee = db.relationship(
         'Employee',
-        backref='project_members'
+        back_populates='project_members'
     )
 
     def __repr__(self):
