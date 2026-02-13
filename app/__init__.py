@@ -27,7 +27,7 @@ def create_app():
         resources={r"/api/*": {
             # "origins": ["http://localhost:5000", "http://127.0.0.1:5000"],
             "origins": "*", 
-            "allow_headers": ["Content-Type", "Authorization"],
+            "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
             "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
             "credentials": False,
         }}

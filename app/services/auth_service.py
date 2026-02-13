@@ -12,7 +12,22 @@ class AuthService:
         if not employee or not verify_password(password, employee.password):
             return None
 
-        return create_access_token(identity=employee.employeeId)
+        access_token = create_access_token(identity=employee.employeeId)
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "UUID":employee.id,
+                "employeeId": employee.employeeId,
+                "email": employee.email,
+                "en_full_name": employee.en_full_name,
+                "vn_full_name": employee.vn_full_name,
+                "authorize_role": employee.authorize_role,
+                "status": employee.status,
+                "description": employee.description,
+            }
+        }
 
     @staticmethod
     def get_current_employee(employee_id: str):

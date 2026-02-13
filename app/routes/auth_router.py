@@ -12,15 +12,15 @@ def login():
     email = data.get("email")
     password = data.get("password")
 
-    token = AuthService.login(
+    user = AuthService.login(
         email=email,
         password=password
     )
 
-    if not token:
+    if not user:
         return jsonify({"msg": "Bad credentials"}), 401
 
-    return jsonify(access_token=token)
+    return jsonify(user=user)
 
 
 @auth_bp.route("/me", methods=["GET"])
