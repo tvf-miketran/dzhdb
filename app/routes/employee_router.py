@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, create_access_token
 
 from app.services.employee_service import EmployeeService
+from app.services.auth_service import AuthService
 from app.requests.employee_request import CreateEmployeeRequest, UpdateEmployeeRequest
 from app.utils.decorators import admin_required
 from app.utils.auth_helpers import get_current_user
@@ -365,7 +366,7 @@ def reset_password():
             "errors": ["employeeId field is required"]
         }), 400
     
-    success = EmployeeService.reset_password_to_email(employee_id)
+    success = AuthService.reset_password_to_email(employee_id)
     
     if not success:
         return jsonify({
