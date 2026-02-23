@@ -1,9 +1,10 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, create_access_token
 
 from app.services.employee_service import EmployeeService
 from app.requests.employee_request import CreateEmployeeRequest, UpdateEmployeeRequest
 from app.utils.decorators import admin_required
+from app.utils.auth_helpers import get_current_user
 from app.responses import ApiResponse
 
 employee_bp = Blueprint("employee", __name__)
@@ -73,6 +74,109 @@ def get_all_employees():
     )
     
     return ApiResponse.success(data=result, message="Employees retrieved successfully")
+
+
+@employee_bp.route("/me", methods=["GET"])
+@jwt_required()
+def get_current_user_info():
+    """Get current user's information"""
+    user = get_current_user()
+    if not user:
+        return jsonify({
+            "success": False,
+            "message": "User not found",
+            "errors": None
+        }), 404
+    
+    data = {
+        "id": str(user.id),
+        "employeeId": user.employeeId,
+        "email": user.email,
+        "vnFullName": user.vn_full_name,
+        "enFullName": user.en_full_name,
+        "description": user.description,
+        "authorizeRole": user.authorize_role,
+        "status": user.status,
+        "createdAt": user.created_at.isoformat() if user.created_at else None,
+        "updatedAt": user.updated_at.isoformat() if user.updated_at else None
+    }
+    
+    return ApiResponse.success(data=data, message="User information retrieved successfully")
+
+
+@employee_bp.route("/me", methods=["PUT"])
+@jwt_required()
+def update_current_user_info():
+    """Update current user's information"""
+    user = get_current_user()
+    if not user:
+        return jsonify({
+            "success": False,
+            "message": "User not found",
+            "errors": None
+        }), 404
+    
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Request body is required",
+            "errors": None
+        }), 400
+    
+    # Validate request
+    req, errors = UpdateEmployeeRequest.from_dict(data)
+    
+    if errors:
+        return jsonify({
+            "success": False,
+            "message": "Validation failed",
+            "errors": errors
+        }), 422
+    
+    # Update current user
+    employee, update_errors = EmployeeService.update(
+        id=str(user.id),
+        vn_full_name=req.vn_full_name,
+        en_full_name=req.en_full_name,
+        email=req.email,
+        employee_id=req.employee_id,
+        description=req.description,
+        status=req.status
+    )
+    
+    if update_errors:
+        status_code = 404 if "not found" in update_errors[0].lower() else 400
+        return jsonify({
+            "success": False,
+            "message": update_errors[0],
+            "errors": update_errors
+        }), status_code
+    
+    # Generate new access token
+    new_token = create_access_token(identity=employee.employeeId)
+    
+    response_data = {
+        "id": str(employee.id),
+        "employeeId": employee.employeeId,
+        "email": employee.email,
+        "vnFullName": employee.vn_full_name,
+        "enFullName": employee.en_full_name,
+        "description": employee.description,
+        "authorizeRole": employee.authorize_role,
+        "status": employee.status,
+        "updatedAt": employee.updated_at.isoformat() if employee.updated_at else None
+    }
+    
+    return ApiResponse.success(
+        data={
+            "user": response_data,
+            "access_token": new_token,
+            "token_type": "bearer"
+        },
+        message="User information updated successfully"
+    )
 
 
 @employee_bp.route("/<string:id>", methods=["GET"])
