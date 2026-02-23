@@ -31,6 +31,7 @@ pipeline {
                       -e JWT_SECRET_KEY=${JWT_SECRET_KEY} \
                       -e SQLALCHEMY_DATABASE_URI=${DB_URI} \
                       dzhdashboard:latest
+                    docker image prune -f
                     """
                 }
             }
