@@ -45,3 +45,14 @@ class AuthService:
 
         EmployeeDAO.update_password(employee, new_password)
         return True
+
+    @staticmethod
+    def reset_password_to_email(employee_id: str) -> bool:
+        """Reset password to match email (admin only operation)"""
+        employee = EmployeeDAO.get_by_employee_id(employee_id)
+
+        if not employee:
+            return False
+
+        EmployeeDAO.update_password(employee, employee.email)
+        return True

@@ -189,6 +189,9 @@ class ProjectService:
         
         errors = []
         validated_members = []
+
+        # Get existing member user IDs
+        existing_user_ids = {str(member.user_id) for member in project.project_members}
         
         # Validate each member
         for idx, member in enumerate(members):
@@ -223,6 +226,11 @@ class ProjectService:
                 if not employee:
                     errors.append(f"Member {idx + 1}: Employee with ID '{user_id}' not found")
                     continue
+            
+            # Check if user already exists in project
+            if user_id in existing_user_ids:
+                errors.append(f"Member {idx + 1}: Employee is already a member of this project")
+                continue
             
             validated_members.append({
                 'user_id': user_id,

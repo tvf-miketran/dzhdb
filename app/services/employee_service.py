@@ -66,17 +66,6 @@ class EmployeeService:
         return EmployeeDAO.get_by_employee_id(employee_id)
     
     @staticmethod
-    def reset_password_to_email(employee_id: str) -> bool:
-        """Reset password to match email (admin only operation)"""
-        employee = EmployeeDAO.get_by_employee_id(employee_id)
-
-        if not employee:
-            return False
-
-        EmployeeDAO.update_password(employee, employee.email)
-        return True
-    
-    @staticmethod
     def create(
         employee_id: str,
         email: str,

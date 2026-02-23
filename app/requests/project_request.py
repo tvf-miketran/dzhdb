@@ -82,14 +82,37 @@ class AddProjectMembersRequest:
         errors = []
         
         members = data.get("members", [])
-        
-        if not members:
+
+        # Validate existence
+        if members is None:
             errors.append("Members list is required")
-        
+            return None, errors
+
+        # Validate type
         if not isinstance(members, list):
             errors.append("Members must be an array")
-        
-        if errors:
             return None, errors
         
-        return cls(members=members), None
+        if not members:
+            errors.append("Members list cannot be empty")
+            return None, errors
+        
+        # Remove duplicates based on user_id
+        seen = set()
+        unique_members = []
+
+        for member in members:
+            user_id = member.get("userId")
+
+            if not user_id:
+                errors.append("Each member must have user_id")
+                continue
+
+            if user_id not in seen:
+                seen.add(user_id)
+                unique_members.append(member)
+
+        if errors:
+            return None, errors
+
+        return cls(members=unique_members), None
