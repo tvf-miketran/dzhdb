@@ -44,14 +44,14 @@ class Logwork(db.Model):
     )
 
     # Relationships
-    project = db.relationship(
-        'Project',
-        backref='logworks'
-    )
+    # project = db.relationship(
+    #     'Project',
+    #     backref='logworks'
+    # )
 
     employee = db.relationship(
         'Employee',
-        backref='logworks'
+        back_populates='logworks'
     )
 
     def __repr__(self):

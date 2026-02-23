@@ -86,6 +86,11 @@ class Employee(db.Model):
         back_populates='employee',
         cascade='all, delete-orphan'
     )
+    project_members = db.relationship(
+        'ProjectMember',
+        back_populates='employee',
+        cascade='all, delete-orphan'
+    )
 
     def __repr__(self):
         return f"<Employee {self.en_full_name}>"
