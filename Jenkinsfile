@@ -11,7 +11,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t dzhdashboard:${BUILD_NUMBER} ."
+                sh "docker build -t dzhdashboard:latest ."
             }
         }
 
@@ -30,7 +30,7 @@ pipeline {
                       -e SECRET_KEY=${SECRET_KEY} \
                       -e JWT_SECRET_KEY=${JWT_SECRET_KEY} \
                       -e SQLALCHEMY_DATABASE_URI=${DB_URI} \
-                      dzhdashboard:${BUILD_NUMBER}
+                      dzhdashboard:latest
                     """
                 }
             }
