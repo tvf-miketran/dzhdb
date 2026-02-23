@@ -52,6 +52,8 @@ def get_all_employees():
                 "email": emp.email,
                 "vnFullName": emp.vn_full_name,
                 "enFullName": emp.en_full_name,
+                "description": emp.description,
+                "authorizeRole": emp.authorize_role,
                 "status": emp.status,
                 "createdAt": emp.created_at.isoformat() if emp.created_at else None,
                 "updatedAt": emp.updated_at.isoformat() if emp.updated_at else None
@@ -98,6 +100,7 @@ def get_employee(id: str):
         "vnFullName": employee.vn_full_name,
         "enFullName": employee.en_full_name,
         "authorizeRole": employee.authorize_role,
+        "description": employee.description,
         "status": employee.status,
         "createdAt": employee.created_at.isoformat() if employee.created_at else None,
         "updatedAt": employee.updated_at.isoformat() if employee.updated_at else None
