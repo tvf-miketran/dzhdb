@@ -24,10 +24,17 @@ class Logwork(db.Model):
         nullable=False
     )
 
-    log_date = db.Column(
-        db.Date,
+    month = db.Column(
+        db.String(2),
         nullable=False,
         index=True
+    )
+
+    year = db.Column(
+        db.String(4),
+        nullable=False,
+        index=True,
+        default='2026'
     )
 
     created_at = db.Column(
@@ -55,4 +62,4 @@ class Logwork(db.Model):
     )
 
     def __repr__(self):
-        return f"<Logwork {self.id} - {self.loghours}h on {self.log_date}>"
+        return f"<Logwork {self.id} - {self.loghours}h in Month {self.month}>"

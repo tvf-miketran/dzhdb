@@ -1,0 +1,152 @@
+from sqlalchemy import asc, desc, and_
+from app.models.logwork import Logwork
+from app.models.employee import Employee
+from app import db
+from typing import Optional, List
+from decimal import Decimal
+
+
+class LogworkDAO:
+
+    # Quarter to months mapping
+    QUARTER_MONTHS = {
+        '1': ['01', '02', '03'],
+        '2': ['04', '05', '06'],
+        '3': ['07', '08', '09'],
+        '4': ['10', '11', '12']
+    }
+
+    # ---------- READ ----------
+    @staticmethod
+    def get_by_id(id: str) -> Optional[Logwork]:
+        """Get logwork by UUID"""
+        return Logwork.query.filter_by(id=id).first()
+
+    @staticmethod
+    def get_all() -> List[Logwork]:
+        """Get all logworks"""
+        return Logwork.query.all()
+    
+    @staticmethod
+    def get_by_user_id(user_id: str) -> List[Logwork]:
+        """Get all logworks for a specific user"""
+        return Logwork.query.filter_by(user_id=user_id).order_by(desc(Logwork.month)).all()
+    
+    @staticmethod
+    def get_by_user_id_and_month(user_id: str, month: str) -> Optional[Logwork]:
+        """Get logwork for a specific user in a specific month"""
+        return Logwork.query.filter(
+            and_(Logwork.user_id == user_id, Logwork.month == month)
+        ).first()
+    
+    @staticmethod
+    def get_by_month(month: str) -> List[Logwork]:
+        """Get all logworks for a specific month"""
+        return Logwork.query.filter_by(month=month).order_by(desc(Logwork.created_at)).all()
+    
+    @staticmethod
+    def get_all_filtered(month: str = None, quarter: str = None, year: str = None, user_eng_name: str = None, user_id: str = None, sort_by: str = None) -> List[Logwork]:
+        """Get logworks with optional filters and sorting
+        
+        Args:
+            month: Filter by single month (optional)
+            quarter: Filter by quarter 1-4 (3 months), optional
+            year: Filter by year (optional)
+            user_eng_name: Filter by employee English name (optional, case-insensitive)
+            user_id: Filter by user_id (optional)
+            sort_by: Sort by loghours ('asc' or 'desc'), default is by created_at desc (optional)
+        
+        Returns:
+            List of logworks matching filters
+        """
+        query = Logwork.query
+        
+        # Join with Employee table if filtering by name
+        if user_eng_name:
+            query = query.join(Employee, Logwork.user_id == Employee.id)
+            query = query.filter(Employee.en_full_name.ilike(f'%{user_eng_name}%'))
+        elif user_id:
+            query = query.filter(Logwork.user_id == user_id)
+        
+        # Filter by year
+        if year:
+            query = query.filter(Logwork.year == year)
+        
+        # Filter by month or quarter (month takes precedence over quarter)
+        if month:
+            query = query.filter(Logwork.month == month)
+        elif quarter and quarter in LogworkDAO.QUARTER_MONTHS:
+            months = LogworkDAO.QUARTER_MONTHS[quarter]
+            query = query.filter(Logwork.month.in_(months))
+        
+        # Apply sorting
+        if sort_by == 'asc':
+            query = query.order_by(asc(Logwork.loghours))
+        elif sort_by == 'desc':
+            query = query.order_by(desc(Logwork.loghours))
+        else:
+            query = query.order_by(desc(Logwork.created_at))
+        
+        return query.all()
+
+    # ---------- CREATE ----------
+    @staticmethod
+    def create(user_id: str, log_hours: Decimal, month: str, year: str = '2026') -> Logwork:
+        """Create new logwork"""
+        try:
+            logwork = Logwork(
+                user_id=user_id,
+                loghours=log_hours,
+                month=month,
+                year=year
+            )
+            db.session.add(logwork)
+            db.session.commit()
+            return logwork
+        except Exception:
+            db.session.rollback()
+            raise
+
+    # ---------- UPDATE ----------
+    @staticmethod
+    def update(id: str, log_hours: Decimal = None, month: str = None, year: str = None) -> Logwork:
+        """Update logwork"""
+        try:
+            logwork = LogworkDAO.get_by_id(id)
+            
+            if not logwork:
+                raise ValueError("Logwork not found")
+            
+            # Update fields if provided
+            if log_hours is not None:
+                logwork.loghours = log_hours
+            if month is not None:
+                logwork.month = month
+            if year is not None:
+                logwork.year = year
+            
+            db.session.commit()
+            return logwork
+        except Exception:
+            db.session.rollback()
+            raise
+
+    # ---------- DELETE ----------
+    @staticmethod
+    def delete(id: str) -> bool:
+        """Delete logwork by ID"""
+        try:
+            logwork = LogworkDAO.get_by_id(id)
+            
+            if not logwork:
+                raise ValueError("Logwork not found")
+            
+            db.session.delete(logwork)
+            db.session.commit()
+            return True
+        except Exception:
+            db.session.rollback()
+            raise
+        except Exception:
+            db.session.rollback()
+            raise
