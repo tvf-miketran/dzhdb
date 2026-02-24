@@ -2,6 +2,7 @@ from .auth_request import LoginRequest, UpdatePasswordRequest
 from .employee_request import CreateEmployeeRequest, UpdateEmployeeRequest
 from .project_request import CreateProjectRequest, UpdateProjectRequest, AddProjectMembersRequest
 from .bank_request import CreateBankRequest, UpdateBankRequest
+from .logwork_request import CreateLogworkRequest, UpdateLogworkRequest
 
 __all__ = [
     "LoginRequest", 
@@ -12,5 +13,7 @@ __all__ = [
     "UpdateProjectRequest",
     "AddProjectMembersRequest",
     "CreateBankRequest",
-    "UpdateBankRequest"
+    "UpdateBankRequest",
+    "CreateLogworkRequest",
+    "UpdateLogworkRequest",
 ]
