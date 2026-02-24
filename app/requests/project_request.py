@@ -1,5 +1,40 @@
 from dataclasses import dataclass
 from typing import Optional, List, Tuple, Dict, Any
+from datetime import datetime
+
+
+def parse_date_ddmmyyyy(date_str: Optional[str]) -> Tuple[Optional[datetime], Optional[str]]:
+    """Parse date string in DDMMYYYY format to datetime object
+    
+    Args:
+        date_str: Date string in format DDMMYYYY (e.g., "24022026")
+    
+    Returns:
+        Tuple of (datetime object, error message). If successful, error is None.
+    """
+    if not date_str:
+        return None, None
+    
+    date_str = date_str.strip()
+    if not date_str:
+        return None, None
+    
+    if len(date_str) != 8:
+        return None, f"Date must be in DDMMYYYY format (8 digits)"
+    
+    if not date_str.isdigit():
+        return None, f"Date must contain only digits in DDMMYYYY format"
+    
+    try:
+        day = int(date_str[0:2])
+        month = int(date_str[2:4])
+        year = int(date_str[4:8])
+        
+        # Create datetime object (set to midnight)
+        dt = datetime(year=year, month=month, day=day)
+        return dt, None
+    except ValueError as e:
+        return None, f"Invalid date: {str(e)}"
 
 
 @dataclass
@@ -9,6 +44,8 @@ class CreateProjectRequest:
     project_id: str
     bank_id: Optional[str] = None
     project_link: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     
     @classmethod
     def from_dict(cls, data: dict) -> Tuple[Optional["CreateProjectRequest"], Optional[List[str]]]:
@@ -31,6 +68,15 @@ class CreateProjectRequest:
         if not project_id:
             errors.append("Project ID is required")
         
+        # Parse dates in DDMMYYYY format
+        start_date, start_date_error = parse_date_ddmmyyyy(data.get("startDate"))
+        if start_date_error:
+            errors.append(f"Start Date: {start_date_error}")
+        
+        end_date, end_date_error = parse_date_ddmmyyyy(data.get("endDate"))
+        if end_date_error:
+            errors.append(f"End Date: {end_date_error}")
+        
         if errors:
             return None, errors
         
@@ -39,7 +85,9 @@ class CreateProjectRequest:
             pm_name=pm_name,
             project_id=project_id,
             bank_id=bank_id,
-            project_link=project_link
+            project_link=project_link,
+            start_date=start_date,
+            end_date=end_date
         ), None
 
 
@@ -50,6 +98,8 @@ class UpdateProjectRequest:
     project_id: Optional[str] = None
     bank_id: Optional[str] = None
     project_link: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     
     @classmethod
     def from_dict(cls, data: dict) -> Tuple[Optional["UpdateProjectRequest"], Optional[List[str]]]:
@@ -62,13 +112,31 @@ class UpdateProjectRequest:
         bank_id = data.get("bankId")
         project_link = data.get("projectLink")
         
+        # Parse dates in DDMMYYYY format (if provided)
+        start_date = None
+        if data.get("startDate"):
+            start_date, start_date_error = parse_date_ddmmyyyy(data.get("startDate"))
+            if start_date_error:
+                errors.append(f"Start Date: {start_date_error}")
+        
+        end_date = None
+        if data.get("endDate"):
+            end_date, end_date_error = parse_date_ddmmyyyy(data.get("endDate"))
+            if end_date_error:
+                errors.append(f"End Date: {end_date_error}")
+        
+        if errors:
+            return None, errors
+        
         # No validation needed for optional update
         return cls(
             name=name.strip() if name else None,
             pm_name=pm_name.strip() if pm_name else None,
             project_id=project_id.strip() if project_id else None,
             bank_id=bank_id,
-            project_link=project_link.strip() if project_link else None
+            project_link=project_link.strip() if project_link else None,
+            start_date=start_date,
+            end_date=end_date
         ), None
 
 
