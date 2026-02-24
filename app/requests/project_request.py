@@ -97,9 +97,8 @@ class AddProjectMembersRequest:
             errors.append("Members list cannot be empty")
             return None, errors
         
-        # Remove duplicates based on user_id
-        seen = set()
-        unique_members = []
+        # Remove duplicates based on user_id, keeping highest allocationPercent
+        seen = {}  # user_id -> member with highest allocationPercent
 
         for member in members:
             user_id = member.get("userId")
@@ -109,10 +108,14 @@ class AddProjectMembersRequest:
                 continue
 
             if user_id not in seen:
-                seen.add(user_id)
-                unique_members.append(member)
+                seen[user_id] = member
+            else:
+                current_alloc = seen[user_id].get("allocationPercent", 0)
+                new_alloc = member.get("allocationPercent", 0)
+                if new_alloc > current_alloc:
+                    seen[user_id] = member
 
         if errors:
             return None, errors
 
-        return cls(members=unique_members), None
+        return cls(members=list(seen.values())), None

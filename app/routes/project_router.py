@@ -229,7 +229,6 @@ def add_project_members(id: str):
     Note: 
     - You can use either userId (UUID) or employeeId (e.g., T0759)
     - allocationPercent must be between 0 and 100
-    - If member already exists, their allocation will be updated
     """
     data = request.get_json()
     
