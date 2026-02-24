@@ -287,7 +287,10 @@ class ProjectService:
                     "enFullName": member.employee.en_full_name if member.employee else None,
                     "email": member.employee.email if member.employee else None,
                     "allocationPercent": member.allocation_percent,
-                    "joinedAt": member.joined_at.isoformat() if member.joined_at else None
+                    "joinedAt": member.joined_at.isoformat() if member.joined_at else None,
+                    "authorize_role": member.employee.authorize_role if member.employee else None,
+                    "status": member.employee.status if member.employee else None
+                    
                 }
                 for member in project.project_members
             ]
