@@ -77,7 +77,9 @@ class ProjectService:
             "projectLink": project.project_link,
             "bankId": str(project.bank_id) if project.bank_id else None,
             "bankName": project.bank.name if project.bank else None,
-            "createdAt": project.created_at.isoformat() if project.created_at else None
+            "createdAt": project.created_at.isoformat() if project.created_at else None,
+            "startDate": project.start_date.isoformat() if project.start_date else None,
+            "endDate": project.end_date.isoformat() if project.end_date else None
         }
         
         # Add members information if requested
@@ -105,7 +107,9 @@ class ProjectService:
         pm_name: str,
         project_id: str,
         bank_id: Optional[str] = None,
-        project_link: Optional[str] = None
+        project_link: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
     ) -> Tuple[Optional[Project], Optional[List[str]]]:
         """Create new project with validation"""
         errors = []
@@ -123,7 +127,9 @@ class ProjectService:
                 pm_name=pm_name,
                 project_id=project_id,
                 bank_id=bank_id,
-                project_link=project_link
+                project_link=project_link,
+                start_date=start_date,
+                end_date=end_date
             )
             return project, None
         except Exception as e:
@@ -136,7 +142,9 @@ class ProjectService:
         pm_name: str = None,
         project_id: str = None,
         bank_id: str = None,
-        project_link: str = None
+        project_link: str = None,
+        start_date: str = None,
+        end_date: str = None
     ) -> Tuple[Optional[Project], Optional[List[str]]]:
         """Update project"""
         project = ProjectDAO.get_by_id(id)
@@ -162,7 +170,9 @@ class ProjectService:
                 pm_name=pm_name,
                 project_id=project_id,
                 bank_id=bank_id,
-                project_link=project_link
+                project_link=project_link,
+                start_date=start_date,
+                end_date=end_date
             )
             return updated, None
         except Exception as e:
@@ -273,7 +283,9 @@ class ProjectService:
             "projectLink": project.project_link,
             "bankId": str(project.bank_id) if project.bank_id else None,
             "bankName": project.bank.name if project.bank else None,
-            "createdAt": project.created_at.isoformat() if project.created_at else None
+            "createdAt": project.created_at.isoformat() if project.created_at else None,
+            "startDate": project.start_date.isoformat() if project.start_date else None,
+            "endDate": project.end_date.isoformat() if project.end_date else None
         }
         
         # Add members information if requested

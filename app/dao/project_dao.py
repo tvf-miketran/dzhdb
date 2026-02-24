@@ -68,7 +68,9 @@ class ProjectDAO:
         pm_name: str,
         project_id: str,
         bank_id: Optional[str] = None,
-        project_link: Optional[str] = None
+        project_link: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
     ) -> Project:
         """Create new project"""
         try:
@@ -77,7 +79,9 @@ class ProjectDAO:
                 pm_name=pm_name,
                 project_id=project_id,
                 bank_id=bank_id,
-                project_link=project_link
+                project_link=project_link,
+                start_date=start_date,
+                end_date=end_date
             )
             db.session.add(project)
             db.session.commit()
@@ -94,7 +98,9 @@ class ProjectDAO:
         pm_name: str = None,
         project_id: str = None,
         bank_id: str = None,
-        project_link: str = None
+        project_link: str = None,
+        start_date: str = None,
+        end_date: str = None
     ) -> Project:
         """Update project"""
         try:
@@ -124,6 +130,12 @@ class ProjectDAO:
             
             if project_link is not None:
                 project.project_link = project_link
+            
+            if start_date is not None:
+                project.start_date = start_date
+            
+            if end_date is not None:
+                project.end_date = end_date
             
             db.session.commit()
             return project

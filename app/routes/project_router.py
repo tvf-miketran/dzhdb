@@ -46,7 +46,9 @@ def get_all_projects():
                 "projectLink": proj.project_link,
                 "bankId": str(proj.bank_id) if proj.bank_id else None,
                 "bankName": proj.bank.name if proj.bank else None,
-                "createdAt": proj.created_at.isoformat() if proj.created_at else None
+                "createdAt": proj.created_at.isoformat() if proj.created_at else None,
+                "startDate": proj.start_date.isoformat() if proj.start_date else None,
+                "endDate": proj.end_date.isoformat() if proj.end_date else None
             }
             for proj in projects
         ]
@@ -102,7 +104,9 @@ def create_project():
         "pmName": "PM Full Name",
         "projectId": "PROJ001",
         "bankId": "uuid-string" (optional),
-        "projectLink": "https://..." (optional)
+        "projectLink": "https://..." (optional),
+        "startDate": "24022026" (optional, DDMMYYYY format),
+        "endDate": "31122026" (optional, DDMMYYYY format)
     }
     """
     data = request.get_json()
@@ -130,7 +134,9 @@ def create_project():
         pm_name=req.pm_name,
         project_id=req.project_id,
         bank_id=req.bank_id,
-        project_link=req.project_link
+        project_link=req.project_link,
+        start_date=req.start_date,
+        end_date=req.end_date
     )
     
     if create_errors:
@@ -161,7 +167,9 @@ def update_project(id: str):
         "pmName": "Updated PM Name" (optional),
         "projectId": "PROJ002" (optional),
         "bankId": "uuid-string" (optional),
-        "projectLink": "https://..." (optional)
+        "projectLink": "https://..." (optional),
+        "startDate": "24022026" (optional, DDMMYYYY format),
+        "endDate": "31122026" (optional, DDMMYYYY format)
     }
     """
     data = request.get_json()
@@ -190,7 +198,9 @@ def update_project(id: str):
         pm_name=req.pm_name,
         project_id=req.project_id,
         bank_id=req.bank_id,
-        project_link=req.project_link
+        project_link=req.project_link,
+        start_date=req.start_date,
+        end_date=req.end_date
     )
     
     if update_errors:

@@ -42,6 +42,16 @@ class Project(db.Model):
         nullable=False
     )
 
+    start_date = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
+    end_date = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
     # ==========================================
     # RELATIONSHIPS
     # ==========================================
