@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 
-from app.requests.project_request import AddProjectMembersRequest, CreateProjectRequest, UpdateProjectRequest
+from app.requests.project_request import AddProjectMembersRequest, CreateProjectRequest, UpdateProjectRequest, RemoveProjectMembersRequest
 from app.services.project_service import ProjectService
 from app.responses import ApiResponse
 from app.utils.decorators import admin_required
@@ -227,11 +227,13 @@ def add_project_members(id: str):
         "members": [
             {
                 "userId": "uuid-string" OR "employeeId": "T0759",
-                "allocationPercent": 50
+                "allocationPercent": 50,
+                "roleId": "uuid-string" (optional)
             },
             {
                 "employeeId": "T0760",
-                "allocationPercent": 100
+                "allocationPercent": 100,
+                "roleId": "uuid-string" (optional)
             }
         ]
     }
@@ -239,6 +241,7 @@ def add_project_members(id: str):
     Note: 
     - You can use either userId (UUID) or employeeId (e.g., T0759)
     - allocationPercent must be between 0 and 100
+    - roleId is optional and must be a valid role UUID or role name
     """
     data = request.get_json()
     
@@ -278,3 +281,78 @@ def add_project_members(id: str):
         message=f"Successfully added/updated {len(members)} member(s)",
         status_code=201
     )
+
+
+@project_bp.route("/<string:id>/members", methods=["DELETE"])
+@jwt_required()
+@admin_required
+def remove_project_members(id: str):
+    """Remove members from project (Admin only)
+    
+    Request body:
+    {
+        "members": [
+            {
+                "userId": "uuid-string"
+            },
+            {
+                "userId": "uuid-string"
+            }
+        ]
+    }
+    """
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Request body is required",
+            "errors": None
+        }), 400
+    
+    # Validate request
+    req, errors = RemoveProjectMembersRequest.from_dict(data)
+    
+    if errors:
+        return jsonify({
+            "success": False,
+            "message": "Validation failed",
+            "errors": errors
+        }), 422
+    
+    # Remove members
+    result, remove_errors = ProjectService.remove_members(
+        project_id=id,
+        members=req.members
+    )
+    
+    if result is None:
+        # Complete failure (e.g., project not found)
+        return jsonify({
+            "success": False,
+            "message": "Failed to remove members",
+            "errors": remove_errors
+        }), 404
+    
+    # Partial or complete success
+    removed_count = result['removedCount']
+    failed_count = result['failedCount']
+    
+    if removed_count > 0:
+        # At least some members were removed - return success
+        message = f"Successfully removed {removed_count} member(s)"
+        if failed_count > 0:
+            message += f", {failed_count} member(s) failed"
+        
+        return ApiResponse.success(
+            data=result,
+            message=message,
+            errors=remove_errors
+        )
+    else:
+        # No members were removed - return failure
+        return jsonify({
+            "success": False,
+            "message": "Failed to remove members",
+            "errors": remove_errors
+        }), 400

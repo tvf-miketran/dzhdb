@@ -187,3 +187,41 @@ class AddProjectMembersRequest:
             return None, errors
 
         return cls(members=list(seen.values())), None
+
+
+@dataclass
+class RemoveProjectMembersRequest:
+    members: List[Dict[str, Any]]
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> Tuple[Optional["RemoveProjectMembersRequest"], Optional[List[str]]]:
+        """Parse and validate remove project members request"""
+        errors = []
+        
+        members = data.get("members", [])
+
+        # Validate existence
+        if members is None:
+            errors.append("Members list is required")
+            return None, errors
+
+        # Validate type
+        if not isinstance(members, list):
+            errors.append("Members must be an array")
+            return None, errors
+        
+        if not members:
+            errors.append("Members list cannot be empty")
+            return None, errors
+        
+        # Validate each member has userId
+        for idx, member in enumerate(members):
+            user_id = member.get("userId")
+            
+            if not user_id:
+                errors.append(f"Member {idx + 1}: userId is required")
+        
+        if errors:
+            return None, errors
+
+        return cls(members=members), None
