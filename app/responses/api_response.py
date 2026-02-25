@@ -8,7 +8,8 @@ class ApiResponse:
     def success(
         data: Any = None,
         message: str = "Success",
-        status_code: int = 200
+        status_code: int = 200,
+        errors: Optional[List[str]] = None
     ) -> Tuple[Dict, int]:
         """Return a successful response"""
         response = {
@@ -16,6 +17,8 @@ class ApiResponse:
             "message": message,
             "data": data
         }
+        if errors:
+            response["errors"] = errors
         return response, status_code
     
     @staticmethod

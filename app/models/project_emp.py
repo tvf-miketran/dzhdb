@@ -25,6 +25,12 @@ class ProjectMember(db.Model):
         nullable=False
     )
 
+    role_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey('roles.id', ondelete='SET NULL'),
+        nullable=True
+    )
+
     #Esimated Effort in percentage
     allocation_percent = db.Column(db.Integer, nullable=False)
 
@@ -43,6 +49,12 @@ class ProjectMember(db.Model):
     employee = db.relationship(
         'Employee',
         back_populates='project_members'
+    )
+
+    role = db.relationship(
+        'Role',
+        backref='project_members',
+        foreign_keys=[role_id]
     )
 
     def __repr__(self):

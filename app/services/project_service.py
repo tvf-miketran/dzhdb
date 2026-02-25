@@ -1,11 +1,43 @@
+import uuid
 from typing import Optional, List, Dict, Any, Tuple
 from app.dao.employee_dao import EmployeeDAO
 from app.dao.project_dao import ProjectDAO
+from app.dao.role_dao import RoleDAO
 from app.models.project import Project
 
 
 class ProjectService:
-    
+
+    @staticmethod
+    def _resolve_role_id(role_id_or_name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Resolve roleId: accepts UUID or role name.
+        
+        Returns:
+            (resolved_uuid, error_message)
+        """
+        if not role_id_or_name:
+            return None, None
+
+        # Check if it's a valid UUID
+        try:
+            uuid.UUID(role_id_or_name)
+            # It's a UUID — verify it exists
+            role = RoleDAO.get_by_id(role_id_or_name)
+            if not role:
+                # Fallback: tìm theo name
+                role = RoleDAO.get_by_name(role_id_or_name)
+            if not role:
+                return None, f"Role '{role_id_or_name}' not found"
+            return str(role.id), None
+        except ValueError:
+            pass
+
+        # Not a UUID — try lookup by name
+        role = RoleDAO.get_by_name(role_id_or_name)
+        if not role:
+            return None, f"Role '{role_id_or_name}' not found"
+        return str(role.id), None
+
     @staticmethod
     def get_all() -> List[Project]:
         """Get all projects"""
@@ -65,42 +97,7 @@ class ProjectService:
     def get_by_project_id(project_id: str) -> Optional[Project]:
         """Get project by project_id"""
         return ProjectDAO.get_by_project_id(project_id)
-    
-    @staticmethod
-    def _to_dict(project: Project, include_members: bool = False) -> Dict[str, Any]:
-        """Convert project to dictionary"""
-        result = {
-            "id": str(project.id),
-            "projectId": project.project_id,
-            "name": project.name,
-            "pmName": project.pm_name,
-            "projectLink": project.project_link,
-            "bankId": str(project.bank_id) if project.bank_id else None,
-            "bankName": project.bank.name if project.bank else None,
-            "createdAt": project.created_at.isoformat() if project.created_at else None,
-            "startDate": project.start_date.isoformat() if project.start_date else None,
-            "endDate": project.end_date.isoformat() if project.end_date else None
-        }
-        
-        # Add members information if requested
-        if include_members:
-            result["members"] = [
-                {
-                    "id": str(member.id),
-                    "userId": str(member.user_id),
-                    "employeeId": member.employee.employeeId if member.employee else None,
-                    "vnFullName": member.employee.vn_full_name if member.employee else None,
-                    "enFullName": member.employee.en_full_name if member.employee else None,
-                    "email": member.employee.email if member.employee else None,
-                    "allocationPercent": member.allocation_percent,
-                    "joinedAt": member.joined_at.isoformat() if member.joined_at else None
-                }
-                for member in project.project_members
-            ]
-            result["memberCount"] = len(project.project_members)
-        
-        return result
-        
+          
     @staticmethod
     def create(
         name: str,
@@ -208,6 +205,7 @@ class ProjectService:
             user_id = member.get('userId')
             employee_id = member.get('employeeId')
             allocation = member.get('allocationPercent')
+            role_id = member.get('roleId')
             
             # Must provide either userId or employeeId
             if not user_id and not employee_id:
@@ -241,10 +239,19 @@ class ProjectService:
             if user_id in existing_user_ids:
                 errors.append(f"Member {idx + 1}: Employee is already a member of this project")
                 continue
-            
+
+            # Resolve roleId: accepts UUID or role name
+            resolved_role_id = None
+            if role_id:
+                resolved_role_id, role_error = ProjectService._resolve_role_id(role_id)
+                if role_error:
+                    errors.append(f"Member {idx + 1}: {role_error}")
+                    continue
+
             validated_members.append({
                 'user_id': user_id,
-                'allocation_percent': allocation
+                'allocation_percent': allocation,
+                'role_id': resolved_role_id
             })
         
         if errors:
@@ -263,7 +270,10 @@ class ProjectService:
                     "enFullName": member.employee.en_full_name if member.employee else None,
                     "email": member.employee.email if member.employee else None,
                     "allocationPercent": member.allocation_percent,
-                    "joinedAt": member.joined_at.isoformat() if member.joined_at else None
+                    "joinedAt": member.joined_at.isoformat() if member.joined_at else None,
+                    "roleId": str(member.role.role_id) if member.role.role_id else None,
+                    "roleName": member.role.name if member.role else None,
+                    "roleUuid": str(member.role.id) if member.role else None,
                 }
                 for member in created_members
             ]
@@ -271,6 +281,78 @@ class ProjectService:
             return result, None
         except Exception as e:
             return None, [str(e)]
+    
+    @staticmethod
+    def remove_members(
+        project_id: str,
+        members: List[Dict[str, Any]]
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[List[str]]]:
+        """Remove multiple members from project by user ID
+        
+        Args:
+            project_id: UUID of the project
+            members: List of dicts with key: userId
+        
+        Returns:
+            Tuple of (result dict with removed and failed counts, errors list)
+        """
+        # Verify project exists
+        project = ProjectDAO.get_by_id(project_id)
+        if not project:
+            return None, ["Project not found"]
+        
+        errors = []
+        removed_count = 0
+        failed_members = []
+        
+        # Process each member
+        for idx, member in enumerate(members):
+            user_id = member.get('userId')
+            
+            if not user_id:
+                failed_members.append({
+                    "userId": None,
+                    "error": "userId is required"
+                })
+                errors.append(f"Member {idx + 1}: userId is required")
+                continue
+            
+            # Get the member using DAO
+            try:
+                project_member = ProjectDAO.get_member(project_id, user_id)
+                
+                if not project_member:
+                    failed_members.append({
+                        "userId": user_id,
+                        "error": "Member not found in this project"
+                    })
+                    errors.append(f"Member {idx + 1}: User not found in this project")
+                    continue
+                
+                # Remove the member using DAO
+                removed = ProjectDAO.remove_member(project_id, user_id)
+                if removed:
+                    removed_count += 1
+                else:
+                    failed_members.append({
+                        "userId": user_id,
+                        "error": "Failed to remove member"
+                    })
+                    errors.append(f"Member {idx + 1}: Failed to remove member")
+            except Exception as e:
+                failed_members.append({
+                    "userId": user_id,
+                    "error": str(e)
+                })
+                errors.append(f"Member {idx + 1}: {str(e)}")
+        
+        result = {
+            "removedCount": removed_count,
+            "failedCount": len(failed_members),
+            "failedMembers": failed_members if failed_members else None
+        }
+        
+        return result, errors if errors else None
     
     @staticmethod
     def _to_dict(project: Project, include_members: bool = False) -> Dict[str, Any]:
@@ -301,8 +383,10 @@ class ProjectService:
                     "allocationPercent": member.allocation_percent,
                     "joinedAt": member.joined_at.isoformat() if member.joined_at else None,
                     "authorize_role": member.employee.authorize_role if member.employee else None,
-                    "status": member.employee.status if member.employee else None
-                    
+                    "status": member.employee.status if member.employee else None,
+                    "roleId": str(member.role.role_id) if member.role else None,
+                    "roleName": member.role.name if member.role else None,
+                    "roleUuid": str(member.role.id) if member.role else None
                 }
                 for member in project.project_members
             ]
@@ -314,5 +398,3 @@ class ProjectService:
     def _to_dict_with_members(project: Project) -> Dict[str, Any]:
         """Shortcut to get project dict with members"""
         return ProjectService._to_dict(project, include_members=True)
-
-

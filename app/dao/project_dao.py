@@ -60,6 +60,19 @@ class ProjectDAO:
 
         return query.paginate(page=page, per_page=per_page, error_out=False)
     
+    @staticmethod
+    def get_member_by_id(member_id: str) -> Optional[ProjectMember]:
+        """Get project member by member ID (UUID)"""
+        return ProjectMember.query.filter_by(id=member_id).first()
+    
+    @staticmethod
+    def get_member(project_id: str, user_id: str) -> Optional[ProjectMember]:
+        """Get project member by project_id and user_id"""
+        return ProjectMember.query.filter_by(
+            project_id=project_id,
+            user_id=user_id
+        ).first()
+    
 
     # ---------- CREATE ----------
     @staticmethod
@@ -150,7 +163,7 @@ class ProjectDAO:
         
         Args:
             project_id: UUID of the project
-            members: List of dicts with keys: user_id, allocation_percent
+            members: List of dicts with keys: user_id, allocation_percent, role_id (optional)
         
         Returns:
             List of created ProjectMember objects
@@ -166,15 +179,18 @@ class ProjectDAO:
                 ).first()
                 
                 if existing:
-                    # Update allocation if member already exists
+                    # Update allocation and role if member already exists
                     existing.allocation_percent = member_data['allocation_percent']
+                    if 'role_id' in member_data:
+                        existing.role_id = member_data['role_id']
                     created_members.append(existing)
                 else:
                     # Create new member
                     member = ProjectMember(
                         project_id=project_id,
                         user_id=member_data['user_id'],
-                        allocation_percent=member_data['allocation_percent']
+                        allocation_percent=member_data['allocation_percent'],
+                        role_id=member_data['role_id']
                     )
                     db.session.add(member)
                     created_members.append(member)
@@ -187,7 +203,7 @@ class ProjectDAO:
 
     @staticmethod
     def remove_member(project_id: str, user_id: str) -> bool:
-        """Remove member from project"""
+        """Remove member from project by user_id"""
         try:
             member = ProjectMember.query.filter_by(
                 project_id=project_id,
