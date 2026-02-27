@@ -12,13 +12,13 @@ def login():
     email = data.get("email")
     password = data.get("password")
 
-    user = AuthService.login(
+    user, error = AuthService.login(
         email=email,
         password=password
     )
 
     if not user:
-        return jsonify({"msg": "Bad credentials"}), 401
+        return jsonify({"msg": error}), 401
 
     return jsonify(user=user)
 

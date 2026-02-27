@@ -10,8 +10,12 @@ class AuthService:
         employee = EmployeeDAO.get_by_employee_email(email)
 
         if not employee or not verify_password(password, employee.password):
-            return None
+            error = "Invalid email or password"
+            return None, error
 
+        if employee.status is False:  # INACTIVE
+            error = "Account is inactive. Please contact administrator."
+            return None, error
         access_token = create_access_token(identity=employee.employeeId)
 
         return {
@@ -27,7 +31,7 @@ class AuthService:
                 "status": employee.status,
                 "description": employee.description,
             }
-        }
+        } , None
 
     @staticmethod
     def get_current_employee(employee_id: str):
