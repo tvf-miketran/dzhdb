@@ -47,8 +47,20 @@ def get_all_employees():
     # If no pagination, return all (legacy support)
     if not page:
         employees = EmployeeService.get_all()
-        data = [
-            {
+        data = []
+        for emp in employees:
+            projects = []
+            for pm in emp.project_members:
+                projects.append({
+                    "projectId": str(pm.project_id) if pm.project_id else None,
+                    "projectName": pm.project.name if pm.project and hasattr(pm.project, 'name') else None,
+                    "projectKey": pm.project.project_key if pm.project and hasattr(pm.project, 'project_key') else None,
+                    "roleId": str(pm.role_id) if pm.role_id else None,
+                    "roleName": pm.role.name if pm.role and hasattr(pm.role, 'name') else None,
+                    "allocationPercent": pm.allocation_percent,
+                    "joinedAt": pm.joined_at.isoformat() if pm.joined_at else None
+                })
+            data.append({
                 "id": str(emp.id),
                 "employeeId": emp.employeeId,
                 "email": emp.email,
@@ -57,11 +69,10 @@ def get_all_employees():
                 "description": emp.description,
                 "authorizeRole": emp.authorize_role,
                 "status": emp.status,
+                "projects": projects,
                 "createdAt": emp.created_at.isoformat() if emp.created_at else None,
                 "updatedAt": emp.updated_at.isoformat() if emp.updated_at else None
-            }
-            for emp in employees
-        ]
+            })
         return ApiResponse.success(data=data, message="Employees retrieved successfully")
     
     # Get filtered and sorted paginated results
