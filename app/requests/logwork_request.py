@@ -27,8 +27,8 @@ class CreateLogworkRequest:
         else:
             try:
                 log_hours = Decimal(str(log_hours_raw))
-                if log_hours <= 0:
-                    errors.append("logHour must be greater than 0")
+                if log_hours < 0:
+                    errors.append("logHour must be greater than or equal to 0")
             except (ValueError, TypeError):
                 errors.append("logHour must be a valid number")
         

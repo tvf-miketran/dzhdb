@@ -28,12 +28,8 @@ class Role(db.Model):
         nullable=False
     )
 
-    # Relationships
-    tickets = db.relationship(
-        'Ticket',
-        back_populates='role',
-        cascade='all, delete-orphan'
-    )
+    # Note: tickets relationship removed - using role_ids array in Ticket instead
+    # Roles can be accessed through Ticket.role_ids
 
     def __repr__(self):
         return f"<Role {self.name}>"

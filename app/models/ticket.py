@@ -1,6 +1,6 @@
 from app import db
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.sql import func
 
 
@@ -15,7 +15,6 @@ class Ticket(db.Model):
 
     ticket_id = db.Column(
         db.String(100),
-        unique=True,
         nullable=False,
         index=True
     )
@@ -34,11 +33,11 @@ class Ticket(db.Model):
         nullable=False
     )
 
-    # Xóa role → Ticket vẫn còn, role_id = NULL
-    role_id = db.Column(
-        UUID(as_uuid=True),
-        db.ForeignKey('roles.id', ondelete='SET NULL'),
-        nullable=True
+    # Xóa role → Ticket vẫn còn, role_ids = []
+    role_ids = db.Column(
+        ARRAY(UUID(as_uuid=True)),
+        nullable=True,
+        default=[]
     )
 
     # Xóa employee → Ticket vẫn còn, employee_id = NULL
@@ -61,6 +60,10 @@ class Ticket(db.Model):
         nullable=True,
         index=True
     )
+
+    # Week and month columns
+    week = db.Column(db.Integer, nullable=True, index=True)
+    month = db.Column(db.Integer, nullable=True, index=True)
 
     created_at = db.Column(
         db.DateTime(timezone=True),
@@ -85,11 +88,8 @@ class Ticket(db.Model):
         back_populates='tickets'
     )
 
-    # Ticket has optional role
-    role = db.relationship(
-        'Role',
-        back_populates='tickets'
-    )
+    # Ticket has optional roles (stored as array of UUIDs in role_ids column)
+    # Role objects can be fetched dynamically using role_ids
 
     # Ticket has optional assignee (employee)
     employee = db.relationship(

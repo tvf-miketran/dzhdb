@@ -19,12 +19,12 @@ class LogworkService:
         return LogworkDAO.get_by_user_id(user_id)
     
     @staticmethod
-    def get_by_user_id_with_month_filter(user_id: str, month: str = None, quarter: str = None, year: str = None, sort_by: str = None) -> List[Logwork]:
-        """Get logworks for a specific user, optionally filtered by month/quarter/year and sorted
+    def get_by_user_id_with_month_filter(user_id: str, months: List[str] = None, quarter: str = None, year: str = None, sort_by: str = None) -> List[Logwork]:
+        """Get logworks for a specific user, optionally filtered by months/quarter/year and sorted
         
         Args:
             user_id: UUID of the user
-            month: Filter by single month (optional)
+            months: Filter by list of months e.g. ['01', '03'] (optional)
             quarter: Filter by quarter 1-4 (optional)
             year: Filter by year (optional)
             sort_by: Sort by loghours ('asc' or 'desc'), default is by created date (optional)
@@ -32,16 +32,16 @@ class LogworkService:
         Returns:
             List of logworks for the user
         """
-        if month or quarter or year or sort_by:
-            return LogworkDAO.get_all_filtered(month=month, quarter=quarter, year=year, user_id=user_id, sort_by=sort_by)
+        if months or quarter or year or sort_by:
+            return LogworkDAO.get_all_filtered(months=months, quarter=quarter, year=year, user_id=user_id, sort_by=sort_by)
         return LogworkDAO.get_by_user_id(user_id)
     
     @staticmethod
-    def get_all_with_filters(month: str = None, quarter: str = None, year: str = None, user_eng_name: str = None, sort_by: str = None) -> List[Logwork]:
+    def get_all_with_filters(months: List[str] = None, quarter: str = None, year: str = None, user_eng_name: str = None, sort_by: str = None) -> List[Logwork]:
         """Get all logworks with optional filters and sorting
         
         Args:
-            month: Filter by single month (optional)
+            months: Filter by list of months e.g. ['01', '03'] (optional)
             quarter: Filter by quarter 1-4 (optional)
             year: Filter by year (optional)
             user_eng_name: Filter by employee English name (optional)
@@ -50,7 +50,7 @@ class LogworkService:
         Returns:
             List of logworks matching filters
         """
-        return LogworkDAO.get_all_filtered(month=month, quarter=quarter, year=year, user_eng_name=user_eng_name, sort_by=sort_by)
+        return LogworkDAO.get_all_filtered(months=months, quarter=quarter, year=year, user_eng_name=user_eng_name, sort_by=sort_by)
     
     @staticmethod
     def get_by_id(id: str) -> Optional[Logwork]:
@@ -65,17 +65,21 @@ class LogworkService:
         """
         return {
             "id": str(logwork.id),
-            "userId": str(logwork.user_id),
+            "employeeId": str(logwork.user_id),
             "logHours": float(logwork.loghours),
             "month": logwork.month,
             "year": logwork.year,
             "createdAt": logwork.created_at.isoformat() if logwork.created_at else None,
-            "updatedAt": logwork.updated_at.isoformat() if logwork.updated_at else None
+            "updatedAt": logwork.updated_at.isoformat() if logwork.updated_at else None,
+            "engName": logwork.employee.en_full_name if logwork.employee else None
         }
         
     @staticmethod
-    def create(request_data: CreateLogworkRequest) -> Tuple[Optional[Logwork], Optional[List[str]]]:
-        """Create new logwork with validation
+    def upsert(request_data: CreateLogworkRequest) -> Tuple[Optional[Logwork], Optional[List[str]]]:
+        """Create or update logwork (upsert) with validation
+        
+        If a logwork already exists for (user_id, month, year), update its log hours.
+        Otherwise, create a new record.
         
         Args:
             request_data: CreateLogworkRequest containing user_id, log_hours, month, and year
@@ -89,25 +93,31 @@ class LogworkService:
         user = Employee.query.filter_by(id=request_data.user_id).first()
         if not user:
             errors.append(f"User with ID '{request_data.user_id}' not found")
-        
-        # Check if logwork already exists for this user in this month/year
-        existing = LogworkDAO.get_by_user_id_and_month(request_data.user_id, request_data.month)
-        if existing and existing.year == request_data.year:
-            errors.append(f"Logwork already exists for this user in month {request_data.month} year {request_data.year}")
-        
-        if errors:
             return None, errors
         
         try:
-            logwork = LogworkDAO.create(
-                user_id=request_data.user_id,
-                log_hours=request_data.log_hours,
-                month=request_data.month,
-                year=request_data.year
+            # Check if logwork already exists for this user/month/year
+            existing = LogworkDAO.get_by_user_id_month_year(
+                request_data.user_id, request_data.month, request_data.year
             )
+            
+            if existing:
+                # Update existing record
+                logwork = LogworkDAO.update(
+                    id=str(existing.id),
+                    log_hours=request_data.log_hours
+                )
+            else:
+                # Create new record
+                logwork = LogworkDAO.create(
+                    user_id=request_data.user_id,
+                    log_hours=request_data.log_hours,
+                    month=request_data.month,
+                    year=request_data.year
+                )
             return logwork, None
         except Exception as e:
-            return None, [f"Error creating logwork: {str(e)}"]
+            return None, [f"Error upserting logwork: {str(e)}"]
     
     @staticmethod
     def update(id: str, user_id: str, request_data: UpdateLogworkRequest) -> Tuple[Optional[Logwork], Optional[List[str]]]:
