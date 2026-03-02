@@ -1,4 +1,5 @@
 from sqlalchemy import asc, desc
+from sqlalchemy.orm import joinedload
 from app.models.project import Project
 from app import db
 from typing import Optional, List
@@ -11,13 +12,21 @@ class ProjectDAO:
     # ---------- READ ----------
     @staticmethod
     def get_by_id(id: str) -> Optional[Project]:
-        """Get project by UUID"""
-        return Project.query.filter_by(id=id).first()
+        """Get project by UUID with members eagerly loaded"""
+        return Project.query.options(
+            joinedload(Project.project_members).joinedload(ProjectMember.employee),
+            joinedload(Project.project_members).joinedload(ProjectMember.role),
+            joinedload(Project.bank)
+        ).filter_by(id=id).first()
 
     @staticmethod
     def get_by_project_id(project_id: str) -> Optional[Project]:
-        """Get project by project_id"""
-        return Project.query.filter_by(project_id=project_id).first()
+        """Get project by project_id with members eagerly loaded"""
+        return Project.query.options(
+            joinedload(Project.project_members).joinedload(ProjectMember.employee),
+            joinedload(Project.project_members).joinedload(ProjectMember.role),
+            joinedload(Project.bank)
+        ).filter_by(project_id=project_id).first()
     
     @staticmethod
     def get_all() -> List[Project]:
@@ -34,7 +43,11 @@ class ProjectDAO:
         sort_order: str = "desc"
     ):
         """Get filtered and sorted projects with pagination"""
-        query = Project.query
+        query = Project.query.options(
+            joinedload(Project.project_members).joinedload(ProjectMember.employee),
+            joinedload(Project.project_members).joinedload(ProjectMember.role),
+            joinedload(Project.bank)
+        )
 
         # Filter by bank
         if bank_id:

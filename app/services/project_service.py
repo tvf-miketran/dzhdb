@@ -1,12 +1,22 @@
+<<<<<<< Updated upstream
 import uuid
+=======
+<<<<<<< Updated upstream
+=======
+import uuid
+from datetime import datetime
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 from typing import Optional, List, Dict, Any, Tuple
 from app.dao.employee_dao import EmployeeDAO
 from app.dao.project_dao import ProjectDAO
 from app.dao.role_dao import RoleDAO
 from app.models.project import Project
+from app.validator.time_validator import parse_date
 
 
 class ProjectService:
+<<<<<<< Updated upstream
 
     @staticmethod
     def _resolve_role_id(role_id_or_name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -38,6 +48,24 @@ class ProjectService:
             return None, f"Role '{role_id_or_name}' not found"
         return str(role.id), None
 
+=======
+<<<<<<< Updated upstream
+    
+=======
+
+    @staticmethod
+    def _validate_start_end_dates(start_date: Optional[str], end_date: Optional[str], existing_start: Optional[str] = None, existing_end: Optional[str] = None) -> Optional[str]:
+        """Validate that start_date is before end_date. If a date is not provided, use existing value for comparison."""
+        parsed_start = parse_date(start_date) if start_date else parse_date(existing_start)
+        parsed_end = parse_date(end_date) if end_date else parse_date(existing_end)
+        
+        if parsed_start and parsed_end and parsed_start > parsed_end:
+            return "Start date must be before end date"
+        
+        return None
+
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
     @staticmethod
     def get_all() -> List[Project]:
         """Get all projects"""
@@ -115,6 +143,11 @@ class ProjectService:
         if ProjectDAO.get_by_project_id(project_id):
             errors.append(f"Project ID '{project_id}' already exists")
         
+        # Validate start_date and end_date
+        validation_error = ProjectService._validate_start_end_dates(start_date, end_date) if (start_date or end_date) else None
+        if validation_error:
+            errors.append(validation_error)
+        
         if errors:
             return None, errors
         
@@ -156,6 +189,11 @@ class ProjectService:
             existing = ProjectDAO.get_by_project_id(project_id)
             if existing:
                 errors.append(f"Project ID '{project_id}' already exists")
+                
+        # Validate start_date and end_date
+        validation_error = ProjectService._validate_start_end_dates(start_date, end_date, project.start_date, project.end_date) if (start_date or end_date) else None
+        if validation_error:
+            errors.append(validation_error)
         
         if errors:
             return None, errors
@@ -239,15 +277,29 @@ class ProjectService:
             if user_id in existing_user_ids:
                 errors.append(f"Member {idx + 1}: Employee is already a member of this project")
                 continue
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+            
+=======
+>>>>>>> Stashed changes
 
             # Resolve roleId: accepts UUID or role name
             resolved_role_id = None
             if role_id:
+<<<<<<< Updated upstream
                 resolved_role_id, role_error = ProjectService._resolve_role_id(role_id)
+=======
+                resolved_role_id, role_error = RoleDAO._resolve_role_id(role_id)
+>>>>>>> Stashed changes
                 if role_error:
                     errors.append(f"Member {idx + 1}: {role_error}")
                     continue
 
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
             validated_members.append({
                 'user_id': user_id,
                 'allocation_percent': allocation,

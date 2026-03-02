@@ -1,4 +1,9 @@
+<<<<<<< Updated upstream
 from typing import Optional, List
+=======
+from typing import Optional, List, Tuple
+import uuid
+>>>>>>> Stashed changes
 from app.models.role import Role
 from app import db
 
@@ -66,4 +71,36 @@ class RoleDAO:
             return True
         except Exception:
             db.session.rollback()
+<<<<<<< Updated upstream
             raise
+=======
+            raise
+        
+    @staticmethod
+    def _resolve_role_id(role_id_or_name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Resolve roleId: accepts UUID or role name.
+        
+        Returns:
+            (resolved_uuid, error_message)
+        """
+        if not role_id_or_name:
+            return None, None
+
+        # Check if it's a valid UUID
+        try:
+            uuid.UUID(role_id_or_name)
+            role = RoleDAO.get_by_id(role_id_or_name)
+            if not role:
+                return None, f"Role '{role_id_or_name}' not found"
+            return str(role.id), None
+        except ValueError:
+            pass
+
+        # Not a UUID — try role_id (e.g. "DEV") then name
+        role = RoleDAO.get_by_role_id(role_id_or_name)
+        if not role:
+            role = RoleDAO.get_by_name(role_id_or_name)
+        if not role:
+            return None, f"Role '{role_id_or_name}' not found"
+        return str(role.id), None
+>>>>>>> Stashed changes
