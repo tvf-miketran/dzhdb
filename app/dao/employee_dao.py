@@ -1,8 +1,19 @@
 from sqlalchemy import Tuple, asc, desc
+from sqlalchemy.orm import joinedload
 from app.models.employee import Employee
 from app import db
 from werkzeug.security import generate_password_hash
 from typing import Optional, List
+from app.models.project_emp import ProjectMember
+
+
+def _with_projects():
+    """Reusable joinedload options for project_members → project + role"""
+    return [
+        joinedload(Employee.project_members).joinedload(ProjectMember.project),
+        joinedload(Employee.project_members).joinedload(ProjectMember.role),
+    ]
+
 
 class EmployeeDAO:
 
@@ -10,19 +21,19 @@ class EmployeeDAO:
     @staticmethod
     def get_by_id(id: str) -> Optional[Employee]:
         """Get employee by UUID"""
-        return Employee.query.filter_by(id=id).first()
+        return Employee.query.options(*_with_projects()).filter_by(id=id).first()
 
     @staticmethod
     def get_by_employee_id(employee_id: str) -> Optional[Employee]:
-        return Employee.query.filter_by(employeeId=employee_id).first()
+        return Employee.query.options(*_with_projects()).filter_by(employeeId=employee_id).first()
     
     @staticmethod
     def get_by_employee_email(email: str) -> Optional[Employee]:
-        return Employee.query.filter_by(email=email).first()
+        return Employee.query.options(*_with_projects()).filter_by(email=email).first()
     
     @staticmethod
     def get_all() -> List[Employee]:
-        return Employee.query.all()
+        return Employee.query.options(*_with_projects()).all()
     
     @staticmethod
     def get_all_filtered_sorted(
@@ -34,7 +45,7 @@ class EmployeeDAO:
         sort_order: str = "desc"
     ):
         """Get filtered and sorted employees with pagination"""
-        query = Employee.query
+        query = Employee.query.options(*_with_projects())
 
         if status is not None:
             query = query.filter(Employee.status == status)

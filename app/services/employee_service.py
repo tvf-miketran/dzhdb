@@ -186,7 +186,7 @@ class EmployeeService:
     @staticmethod
     def _to_dict(employee: Employee) -> Dict[str, Any]:
         """Convert employee to dictionary"""
-        return {
+        data = {
             "id": str(employee.id),
             "employeeId": employee.employeeId,
             "email": employee.email,
@@ -198,3 +198,18 @@ class EmployeeService:
             "createdAt": employee.created_at.isoformat() if employee.created_at else None,
             "updatedAt": employee.updated_at.isoformat() if employee.updated_at else None
         }
+        # Include project and role information
+        projects = []
+        for pm in employee.project_members:
+            projects.append({
+                "projectId": str(pm.project_id) if pm.project_id else None,
+                "projectName": pm.project.name if pm.project and hasattr(pm.project, 'name') else None,
+                "projectKey": pm.project.project_key if pm.project and hasattr(pm.project, 'project_key') else None,
+                "roleId": str(pm.role_id) if pm.role_id else None,
+                "roleName": pm.role.name if pm.role and hasattr(pm.role, 'name') else None,
+                "allocationPercent": pm.allocation_percent,
+                "joinedAt": pm.joined_at.isoformat() if pm.joined_at else None
+            })
+        data["projects"] = projects
+            
+        return data
