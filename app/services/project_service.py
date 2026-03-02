@@ -292,7 +292,7 @@ class ProjectService:
                     "email": member.employee.email if member.employee else None,
                     "allocationPercent": member.allocation_percent,
                     "joinedAt": member.joined_at.isoformat() if member.joined_at else None,
-                    "roleId": str(member.role.role_id) if member.role.role_id else None,
+                    "roleId": str(member.role.role_id) if member.role else None,
                     "roleName": member.role.name if member.role else None,
                     "roleUuid": str(member.role.id) if member.role else None,
                 }
