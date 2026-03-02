@@ -1,9 +1,5 @@
-<<<<<<< Updated upstream
-from typing import Optional, List
-=======
 from typing import Optional, List, Tuple
 import uuid
->>>>>>> Stashed changes
 from app.models.role import Role
 from app import db
 
@@ -71,9 +67,6 @@ class RoleDAO:
             return True
         except Exception:
             db.session.rollback()
-<<<<<<< Updated upstream
-            raise
-=======
             raise
         
     @staticmethod
@@ -103,4 +96,3 @@ class RoleDAO:
         if not role:
             return None, f"Role '{role_id_or_name}' not found"
         return str(role.id), None
->>>>>>> Stashed changes

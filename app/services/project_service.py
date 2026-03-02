@@ -1,12 +1,5 @@
-<<<<<<< Updated upstream
-import uuid
-=======
-<<<<<<< Updated upstream
-=======
 import uuid
 from datetime import datetime
->>>>>>> Stashed changes
->>>>>>> Stashed changes
 from typing import Optional, List, Dict, Any, Tuple
 from app.dao.employee_dao import EmployeeDAO
 from app.dao.project_dao import ProjectDAO
@@ -16,8 +9,6 @@ from app.validator.time_validator import parse_date
 
 
 class ProjectService:
-<<<<<<< Updated upstream
-
     @staticmethod
     def _resolve_role_id(role_id_or_name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         """Resolve roleId: accepts UUID or role name.
@@ -48,11 +39,6 @@ class ProjectService:
             return None, f"Role '{role_id_or_name}' not found"
         return str(role.id), None
 
-=======
-<<<<<<< Updated upstream
-    
-=======
-
     @staticmethod
     def _validate_start_end_dates(start_date: Optional[str], end_date: Optional[str], existing_start: Optional[str] = None, existing_end: Optional[str] = None) -> Optional[str]:
         """Validate that start_date is before end_date. If a date is not provided, use existing value for comparison."""
@@ -64,8 +50,6 @@ class ProjectService:
         
         return None
 
->>>>>>> Stashed changes
->>>>>>> Stashed changes
     @staticmethod
     def get_all() -> List[Project]:
         """Get all projects"""
@@ -277,29 +261,14 @@ class ProjectService:
             if user_id in existing_user_ids:
                 errors.append(f"Member {idx + 1}: Employee is already a member of this project")
                 continue
-<<<<<<< Updated upstream
-=======
-<<<<<<< Updated upstream
-            
-=======
->>>>>>> Stashed changes
-
             # Resolve roleId: accepts UUID or role name
             resolved_role_id = None
             if role_id:
-<<<<<<< Updated upstream
-                resolved_role_id, role_error = ProjectService._resolve_role_id(role_id)
-=======
                 resolved_role_id, role_error = RoleDAO._resolve_role_id(role_id)
->>>>>>> Stashed changes
                 if role_error:
                     errors.append(f"Member {idx + 1}: {role_error}")
                     continue
 
-<<<<<<< Updated upstream
-=======
->>>>>>> Stashed changes
->>>>>>> Stashed changes
             validated_members.append({
                 'user_id': user_id,
                 'allocation_percent': allocation,
