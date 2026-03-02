@@ -203,7 +203,7 @@ class ProjectDAO:
                         project_id=project_id,
                         user_id=member_data['user_id'],
                         allocation_percent=member_data['allocation_percent'],
-                        role_id=member_data['role_id']
+                        role_id=member_data.get('role_id')
                     )
                     db.session.add(member)
                     created_members.append(member)
