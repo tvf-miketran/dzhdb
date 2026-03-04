@@ -28,6 +28,25 @@ class TicketDAO:
             joinedload(Ticket.ticket_type),
             joinedload(Ticket.ticket_status)
         ).filter_by(ticket_id=ticket_id).first()
+
+    @staticmethod
+    def get_by_ticket_id_like(ticket_id_pattern: str) -> List[Ticket]:
+        """Get tickets by ticket_id pattern using LIKE search
+        
+        Args:
+            ticket_id_pattern: The pattern to search for (e.g., "ABC-123" will match "ABC-123", "ABC-123(1)", "ABC-123(2)")
+        
+        Returns:
+            List of tickets matching the pattern
+        """
+        # Use ILIKE for case-insensitive search
+        search_pattern = f"{ticket_id_pattern}%"
+        return Ticket.query.options(
+            joinedload(Ticket.project),
+            joinedload(Ticket.employee),
+            joinedload(Ticket.ticket_type),
+            joinedload(Ticket.ticket_status)
+        ).filter(Ticket.ticket_id.ilike(search_pattern)).all()
     
     @staticmethod
     def get_all() -> List[Ticket]:

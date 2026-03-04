@@ -9,6 +9,7 @@ from app.responses import ApiResponse
 from app.utils.decorators import admin_required
 from app.utils.query_helpers import parse_list_param, parse_int_list_param
 from app.dao.employee_dao import EmployeeDAO
+from sqlalchemy.exc import DataError
 
 ticket_bp = Blueprint("ticket", __name__)
 
@@ -358,13 +359,29 @@ def get_my_tickets():
 @ticket_bp.route("/<string:id>", methods=["GET"])
 @jwt_required()
 def get_ticket(id: str):
-    """Get ticket by ID (UUID or ticket_id)"""
+    """Get ticket by ID (UUID or ticket_id pattern with LIKE search)"""
     # Try to get by UUID first
-    ticket = TicketService.get_by_id(id)
+    # Catch both ValueError (invalid UUID format) and DataError (SQLAlchemy UUID type error)
+    try:
+        ticket = TicketService.get_by_id(id)
+    except (ValueError, DataError):
+        ticket = None
     
-    # If not found by UUID, try by ticket_id
+    # If not found by UUID, try by ticket_id exact match
     if not ticket:
         ticket = TicketService.get_by_ticket_id(id)
+    
+    # If still not found, try LIKE search (e.g., "ABC-123" will match "ABC-123", "ABC-123(1)", etc.)
+    if not ticket:
+        tickets = TicketService.get_by_ticket_id_like(id)
+        
+        if tickets:
+            # Return all matching tickets
+            data = [TicketService._to_dict(t) for t in tickets]
+            return ApiResponse.success(
+                data=data, 
+                message=f"Found {len(data)} ticket(s) matching '{id}'"
+            )
     
     if not ticket:
         return jsonify({
@@ -378,9 +395,59 @@ def get_ticket(id: str):
     return ApiResponse.success(data=data, message="Ticket retrieved successfully")
 
 
+@ticket_bp.route("/search", methods=["GET"])
+@jwt_required()
+def search_ticket_by_ticket_id():
+    """Search ticket by ticket_id using LIKE pattern matching
+    
+    Query parameters:
+    - query: The ticket ID or pattern to search (e.g., "AMI-4334")
+    
+    Returns:
+    - Single ticket if exact match found
+    - Multiple tickets if LIKE pattern matches
+    - 400 if query is missing
+    - 404 if no match found
+    """
+    # Get query parameter
+    query = request.args.get("query", type=str)
+    
+    if not query or not query.strip():
+        return jsonify({
+            "success": False,
+            "message": "Query parameter 'query' is required",
+            "errors": None
+        }), 400
+    
+    # Sanitize: limit length and trim whitespace
+    query = query.strip()[:50]  # Limit to 50 characters
+    
+    # LIKE search - finds tickets matching pattern
+    tickets = TicketService.get_by_ticket_id_like(query)
+    
+    if not tickets:
+        return jsonify({
+            "success": False,
+            "message": f"No tickets found matching '{query}'",
+            "errors": None
+        }), 404
+    
+    # If only one result and it matches exactly, return single ticket
+    if len(tickets) == 1 and tickets[0].ticket_id == query:
+        data = TicketService._to_dict(tickets[0])
+        return ApiResponse.success(data=data, message="Ticket found")
+    
+    # Multiple matches - return all
+    data = [TicketService._to_dict(t) for t in tickets]
+    return ApiResponse.success(
+        data=data, 
+        message=f"Found {len(data)} ticket(s) matching '{query}'"
+    )
+
+
 @ticket_bp.route("", methods=["POST"])
 @jwt_required()
-@admin_required
+# @admin_required
 def create_ticket():
     """Create new ticket (Admin only)
     
@@ -389,13 +456,16 @@ def create_ticket():
         "ticketId": "TICKET001",
         "projectId": "uuid-string" (required),
         "ticketLink": "https://..." (optional),
-        "roleIds": ["uuid-string"] (optional, array of role UUIDs),
+        "roleIds": ["BA", "DEV", "EQA", "IQA", "REVIEWER"] (optional, array of role IDs),
         "employeeId": "uuid-string" (optional, assignee),
         "ticketTypeId": "uuid-string" (optional),
         "ticketStatusId": "uuid-string" (optional),
         "week": "1 (01/01/2026-04/01/2026)" (optional) or just "1",
         "month": 1 (optional)
     }
+    
+    Note: roleIds now accepts roleID strings (BA, DEV, EQA, IQA, REVIEWER) instead of UUIDs.
+          These will be resolved to UUIDs internally.
     """
     data = request.get_json()
     
@@ -432,13 +502,13 @@ def create_ticket():
     if create_errors:
         return jsonify({
             "success": False,
-            "message": "Failed to create ticket",
+            "message": message if message else "Failed to create ticket",
             "errors": create_errors
         }), 400
     
     response_data = TicketService._to_dict(ticket)
     
-    # Use the returned message if available (e.g., when ticket already exists and was updated)
+    # Use the returned message if available (e.g., when ticket already exists)
     success_message = message if message else "Ticket created successfully"
     
     return ApiResponse.success(
@@ -450,7 +520,7 @@ def create_ticket():
 
 @ticket_bp.route("/bulk", methods=["POST"])
 @jwt_required()
-@admin_required
+# @admin_required
 def create_tickets():
     """Create multiple tickets (Admin only)
     
@@ -461,7 +531,7 @@ def create_tickets():
                 "ticketId": "TICKET001",
                 "projectId": "uuid-string" (required),
                 "ticketLink": "https://..." (optional),
-                "roleIds": ["uuid-string"] (optional, array of role UUIDs),
+                "roleIds": ["BA", "DEV", "EQA", "IQA", "REVIEWER"] (optional, array of role IDs),
                 "employeeId": "uuid-string" (optional, assignee),
                 "ticketTypeId": "uuid-string" (optional),
                 "ticketStatusId": "uuid-string" (optional),
@@ -470,6 +540,22 @@ def create_tickets():
             },
             ...
         ]
+    }
+    
+    Note: roleIds now accepts roleID strings (BA, DEV, EQA, IQA, REVIEWER) instead of UUIDs.
+          These will be resolved to UUIDs internally.
+    
+    Response when mixed existing/new tickets:
+    {
+        "success": true,
+        "data": {
+            "created": [...],
+            "existing": [...],
+            "total_created": 2,
+            "total_existing": 2,
+            "errors": [...]
+        },
+        "message": "New tickets created with IDs CBA, DBA. Ticket IDs ABC, ABD already exist"
     }
     """
     data = request.get_json()
@@ -490,79 +576,98 @@ def create_tickets():
             "errors": None
         }), 400
     
-    created_tickets = []
-    errors_list = []
-    
-    for idx, ticket_data in enumerate(tickets_data):
+    # Prepare tickets data for bulk create
+    tickets_to_create = []
+    for ticket_data in tickets_data:
         # Validate each ticket
         req, errors = CreateTicketRequest.from_dict(ticket_data)
         
         if errors:
-            errors_list.append({
-                "index": idx,
-                "ticketId": ticket_data.get("ticketId", "unknown"),
-                "errors": errors
-            })
             continue
         
-        # Create ticket
-        ticket, create_errors, message = TicketService.create(
-            ticket_id=req.ticket_id,
-            project_id=req.project_id,
-            ticket_link=req.ticket_link,
-            role_ids=req.role_ids,
-            employee_id=req.employee_id,
-            ticket_type_id=req.ticket_type_id,
-            ticket_status_id=req.ticket_status_id,
-            week=req.week,
-            month=req.month
-        )
-        
-        if create_errors:
-            errors_list.append({
-                "index": idx,
-                "ticketId": req.ticket_id,
-                "errors": create_errors
-            })
-        else:
-            created_tickets.append(TicketService._to_dict(ticket))
+        tickets_to_create.append({
+            "ticket_id": req.ticket_id,
+            "project_id": req.project_id,
+            "ticket_link": req.ticket_link,
+            "role_ids": req.role_ids,
+            "employee_id": req.employee_id,
+            "ticket_type_id": req.ticket_type_id,
+            "ticket_status_id": req.ticket_status_id,
+            "week": req.week,
+            "month": req.month
+        })
     
-    if not created_tickets:
+    # Use bulk create method
+    created_tickets, existing_tickets, errors = TicketService.create_bulk(tickets_to_create)
+    
+    # Build response data
+    response_data = {
+        "created": [TicketService._to_dict(t) for t in created_tickets],
+        "total_created": len(created_tickets),
+    }
+    
+    # Add existing tickets info
+    if existing_tickets:
+        response_data["existing"] = existing_tickets
+        response_data["total_existing"] = len(existing_tickets)
+    
+    if errors:
+        response_data["errors"] = errors
+    
+    # Build message based on results
+    message_parts = []
+    if created_tickets:
+        created_ids = [t.ticket_id for t in created_tickets]
+        message_parts.append(f"New tickets created with IDs {', '.join(created_ids)}")
+    if existing_tickets:
+        existing_ids = [e["ticketId"] for e in existing_tickets]
+        message_parts.append(f"Ticket IDs {', '.join(existing_ids)} already exist")
+    
+    # If all tickets already exist, return success with existing tickets data
+    if not created_tickets and existing_tickets:
+        return ApiResponse.success(
+            data=response_data,
+            message=". ".join(message_parts),
+            status_code=200
+        )
+    
+    if not created_tickets and not existing_tickets:
         return jsonify({
             "success": False,
             "message": "Failed to create any tickets",
-            "errors": errors_list
+            "errors": errors
         }), 400
     
+    message = ". ".join(message_parts) if message_parts else f"Successfully created {len(created_tickets)} tickets"
+    
     return ApiResponse.success(
-        data={
-            "created": created_tickets,
-            "total_created": len(created_tickets),
-            "errors": errors_list
-        },
-        message=f"Successfully created {len(created_tickets)} tickets",
+        data=response_data,
+        message=message,
         status_code=201
     )
 
 
 @ticket_bp.route("/<string:id>", methods=["PUT"])
 @jwt_required()
-@admin_required
+# @admin_required
 def update_ticket(id: str):
-    """Update ticket (Admin only)
+    """Update ticket
     
     Request body:
     {
         "ticketId": "TICKET002" (optional),
         "ticketLink": "https://..." (optional),
         "projectId": "uuid-string" (optional),
-        "roleIds": ["uuid-string"] (optional, array of role UUIDs),
+        "roleIds": ["BA", "DEV", "EQA", "IQA", "REVIEWER"] (optional, array of role IDs),
         "employeeId": "uuid-string" (optional),
         "ticketTypeId": "uuid-string" (optional),
         "ticketStatusId": "uuid-string" (optional),
         "week": "1 (01/01/2026-04/01/2026)" (optional) or just "1",
         "month": 1 (optional)
     }
+    
+    Note: roleIds now accepts roleID strings (BA, DEV, EQA, IQA, REVIEWER) instead of UUIDs.
+          These will be resolved to UUIDs internally.
     """
     data = request.get_json()
     
@@ -610,11 +715,118 @@ def update_ticket(id: str):
     return ApiResponse.success(data=response_data, message="Ticket updated successfully")
 
 
+@ticket_bp.route("/bulk", methods=["PUT"])
+@jwt_required()
+# @admin_required
+def update_tickets():
+    """Update multiple tickets
+    
+    Request body:
+    {
+        "tickets": [
+            {
+                "id": "uuid-string" (required - UUID to identify ticket to update),
+                "ticketId": "TICKET002" (optional - new ticket ID),
+                "ticketLink": "https://..." (optional),
+                "projectId": "uuid-string" (optional),
+                "roleIds": ["BA", "DEV", "EQA", "IQA", "REVIEWER"] (optional, array of role IDs),
+                "employeeId": "uuid-string" (optional),
+                "ticketTypeId": "uuid-string" (optional),
+                "ticketStatusId": "uuid-string" (optional),
+                "week": "1 (01/01/2026-04/01/2026)" (optional) or just "1",
+                "month": 1 (optional)
+            },
+            ...
+        ]
+    }
+    
+    Note: 
+    - roleIds accepts roleID strings (BA, DEV, EQA, IQA, REVEWER) instead of UUIDs.
+    - Each ticket must be identified by 'id' (UUID) - ticketId is for updating the ticket ID value.
+    - Tickets not found will be returned in 'not_found' array with "Ticket not found" message.
+    
+    Response:
+    {
+        "success": true,
+        "data": {
+            "updated": [...],
+            "not_found": [...],
+            "errors": [...],
+            "total_updated": 2,
+            "total_not_found": 1,
+            "total_errors": 0
+        },
+        "message": "2 ticket(s) updated successfully, 1 not found"
+    }
+    """
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Request body is required",
+            "errors": None
+        }), 400
+    
+    tickets_data = data.get("tickets")
+    
+    if not tickets_data or not isinstance(tickets_data, list):
+        return jsonify({
+            "success": False,
+            "message": "Tickets array is required",
+            "errors": None
+        }), 400
+    
+    # Use bulk update method
+    updated_tickets, not_found_tickets, errors = TicketService.update_bulk(tickets_data)
+    
+    # Build response data
+    response_data = {
+        "updated": updated_tickets,
+        "total_updated": len(updated_tickets),
+    }
+    
+    # Add not found tickets info
+    if not_found_tickets:
+        response_data["not_found"] = not_found_tickets
+        response_data["total_not_found"] = len(not_found_tickets)
+    
+    if errors:
+        response_data["errors"] = errors
+        response_data["total_errors"] = len(errors)
+    
+    # Build message based on results
+    message_parts = []
+    if updated_tickets:
+        message_parts.append(f"{len(updated_tickets)} ticket(s) updated successfully")
+    if not_found_tickets:
+        message_parts.append(f"{len(not_found_tickets)} not found")
+    if errors:
+        message_parts.append(f"{len(errors)} error(s)")
+    
+    message = ", ".join(message_parts) if message_parts else "No changes"
+    
+    # Determine success status
+    # If all tickets failed to update (not found or errors), return 400
+    if not updated_tickets and (not_found_tickets or errors):
+        return jsonify({
+            "success": False,
+            "message": message,
+            "errors": errors if errors else None,
+            "data": response_data
+        }), 400
+    
+    return ApiResponse.success(
+        data=response_data,
+        message=message
+    )
+
+
 @ticket_bp.route("/<string:id>", methods=["DELETE"])
 @jwt_required()
-@admin_required
+# @admin_required
 def delete_ticket(id: str):
-    """Delete ticket (Admin only)"""
+    """Delete ticket"""
     success, errors = TicketService.delete(id)
     
     if not success:
@@ -722,4 +934,3 @@ def get_tickets_by_project(project_id: str):
     )
     
     return ApiResponse.success(data=result, message="Tickets for project retrieved successfully")
-

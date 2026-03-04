@@ -4,6 +4,7 @@ from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from werkzeug.exceptions import HTTPException
 
 from app.exceptions.http_exceptions import ApiException
+from app import db
 
 
 def register_error_handlers(app):
@@ -12,11 +13,14 @@ def register_error_handlers(app):
     @app.errorhandler(ApiException)
     def handle_api_exception(error: ApiException):
         """Handle custom API exceptions"""
+        # Ensure session is in a clean state
+        db.session.rollback()
         return error.to_dict(), error.status_code
 
     @app.errorhandler(NoAuthorizationError)
     def handle_no_authorization(error):
         """Handle missing JWT token"""
+        db.session.rollback()
         return {
             "success": False,
             "message": "Missing authorization token",
@@ -26,6 +30,7 @@ def register_error_handlers(app):
     @app.errorhandler(InvalidHeaderError)
     def handle_invalid_header(error):
         """Handle invalid JWT header"""
+        db.session.rollback()
         return {
             "success": False,
             "message": "Invalid authorization header",
@@ -35,6 +40,7 @@ def register_error_handlers(app):
     @app.errorhandler(ExpiredSignatureError)
     def handle_expired_token(error):
         """Handle expired JWT token"""
+        db.session.rollback()
         return {
             "success": False,
             "message": "Token has expired",
@@ -44,6 +50,7 @@ def register_error_handlers(app):
     @app.errorhandler(InvalidTokenError)
     def handle_invalid_token(error):
         """Handle invalid JWT token"""
+        db.session.rollback()
         return {
             "success": False,
             "message": "Invalid token",
@@ -53,6 +60,7 @@ def register_error_handlers(app):
     @app.errorhandler(HTTPException)
     def handle_http_exception(error: HTTPException):
         """Handle Werkzeug HTTP exceptions (404, 405, etc.)"""
+        db.session.rollback()
         return {
             "success": False,
             "message": error.description,
@@ -62,6 +70,9 @@ def register_error_handlers(app):
     @app.errorhandler(Exception)
     def handle_generic_exception(error: Exception):
         """Handle all other unhandled exceptions"""
+        # Rollback the session to reset any aborted transaction
+        db.session.rollback()
+        
         # Log the error for debugging
         app.logger.error(f"Unhandled exception: {str(error)}", exc_info=True)
         
