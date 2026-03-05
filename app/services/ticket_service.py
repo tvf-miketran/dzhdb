@@ -231,10 +231,18 @@ class TicketService:
         errors = []
         message = None
         
-        # Check if ticket_id already exists - if so, return error
-        existing_ticket = TicketDAO.get_by_ticket_id(ticket_id)
-        if existing_ticket:
-            return None, ["Ticket ID already exists"], "ticket already exist, please go to update page"
+        # Check if ticket with same ticket_id AND employee_id already exists
+        # If both ticket_id AND employee_id match, then ticket is considered duplicate
+        # If only ticket_id matches but employee_id is different, allow creating new ticket
+        if employee_id:
+            existing_ticket = TicketDAO.get_by_ticket_id_and_employee_id(ticket_id, employee_id)
+            if existing_ticket:
+                return None, ["Ticket ID already exists for this employee"], "ticket already exist for this employee, please go to update page"
+        else:
+            # If no employee_id provided, check if ticket_id exists (original behavior)
+            existing_ticket = TicketDAO.get_by_ticket_id(ticket_id)
+            if existing_ticket:
+                return None, ["Ticket ID already exists"], "ticket already exist, please go to update page"
         
         # Resolve role IDs to UUIDs (roleID like 'DEV' -> UUID)
         resolved_role_ids = None
@@ -296,15 +304,28 @@ class TicketService:
         
         for idx, ticket_data in enumerate(tickets_data):
             ticket_id = ticket_data.get("ticket_id")
+            employee_id = ticket_data.get("employee_id")
             
-            # Check if ticket_id already exists
-            existing_ticket = TicketDAO.get_by_ticket_id(ticket_id)
-            if existing_ticket:
-                existing_tickets.append({
-                    "ticketId": ticket_id,
-                    "ticket": TicketService._to_dict(existing_ticket)
-                })
-                continue
+            # Check if ticket with same ticket_id AND employee_id already exists
+            # If both ticket_id AND employee_id match, then ticket is considered duplicate
+            # If only ticket_id matches but employee_id is different, allow creating new ticket
+            if employee_id:
+                existing_ticket = TicketDAO.get_by_ticket_id_and_employee_id(ticket_id, employee_id)
+                if existing_ticket:
+                    existing_tickets.append({
+                        "ticketId": ticket_id,
+                        "ticket": TicketService._to_dict(existing_ticket)
+                    })
+                    continue
+            else:
+                # If no employee_id provided, check if ticket_id exists (original behavior)
+                existing_ticket = TicketDAO.get_by_ticket_id(ticket_id)
+                if existing_ticket:
+                    existing_tickets.append({
+                        "ticketId": ticket_id,
+                        "ticket": TicketService._to_dict(existing_ticket)
+                    })
+                    continue
             
             # Resolve role IDs to UUIDs (roleID like 'DEV' -> UUID)
             resolved_role_ids = None

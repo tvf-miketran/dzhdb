@@ -30,6 +30,24 @@ class TicketDAO:
         ).filter_by(ticket_id=ticket_id).first()
 
     @staticmethod
+    def get_by_ticket_id_and_employee_id(ticket_id: str, employee_id: str) -> Optional[Ticket]:
+        """Get ticket by ticket_id AND employee_id with relationships eagerly loaded
+        
+        Args:
+            ticket_id: The ticket ID string
+            employee_id: The employee UUID string
+            
+        Returns:
+            Ticket if found with both matching ticket_id and employee_id, None otherwise
+        """
+        return Ticket.query.options(
+            joinedload(Ticket.project),
+            joinedload(Ticket.employee),
+            joinedload(Ticket.ticket_type),
+            joinedload(Ticket.ticket_status)
+        ).filter_by(ticket_id=ticket_id, employee_id=employee_id).first()
+
+    @staticmethod
     def get_by_ticket_id_like(ticket_id_pattern: str) -> List[Ticket]:
         """Get tickets by ticket_id pattern using LIKE search
         
