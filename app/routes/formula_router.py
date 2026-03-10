@@ -1,0 +1,431 @@
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from datetime import datetime
+import calendar
+
+from app.services.formula_service import FormulaService
+from app.responses import ApiResponse
+from app.utils.decorators import admin_required
+from app.utils.query_helpers import parse_list_param, parse_int_list_param
+from app.dao.employee_dao import EmployeeDAO
+
+formula_bp = Blueprint("formula", __name__)
+
+
+@formula_bp.route("", methods=["GET"])
+@jwt_required()
+def get_formula():
+    """Get all formulas and all parameters
+    
+    Dynamic variables (computed at runtime):
+    - TASK_COUNT: Number of completed tasks
+    - BUG_COUNT: Number of completed bugs
+    - LOG_HOURS: Total log hours for employee in month/year
+    - TICKET_POINT: Ticket contribution point
+    - LOGWORK_POINT: Logwork contribution point
+    - MEMBER_CONTR_POINT: Member total contribution point (ticket + logwork)
+    - TOTAL_TEAM_POINTS: Total team contribution points
+    - BILLABLE_PARAM: Billable parameter from system
+    
+    Returns:
+    {
+        "success": true,
+        "data": {
+            "formulas": [
+                {
+                    "name": "TICKET_FORMULA_STRING",
+                    "value": "(TASK_COUNT * TASK_WEIGHT + BUG_COUNT * BUG_WEIGHT) * ROLE_WEIGHT / STANDARD_ROLE",
+                    "required_params": ["TASK_WEIGHT", "BUG_WEIGHT", "ROLE_WEIGHT", "STANDARD_ROLE"]
+                },
+                {"name": "LOGWORK_FORMULA_STRING", "value": "LOG_HOURS / STANDARD_LOGWORK", "required_params": ["STANDARD_LOGWORK"]},
+                {"name": "MEMBER_CONTR_POINT_FORMULA_STRING", "value": "TICKET_POINT + LOGWORK_POINT", "required_params": []},
+                {"name": "BILLABLE_POINT_FORMULA_STRING", "value": "MEMBER_CONTR_POINT / TOTAL_TEAM_POINTS * BILLABLE_PARAM", "required_params": ["BILLABLE_PARAM"]}
+            ],
+            "parameters": {
+                "TASK_WEIGHT": "1",
+                "BUG_WEIGHT": "2",
+                "DEV_ROLE_WEIGHT": "1",
+                "BA_ROLE_WEIGHT": "1",
+                "QA_ROLE_WEIGHT": "1",
+                "STANDARD_DEV": "100",
+                "STANDARD_BA": "100",
+                "STANDARD_QA": "100",
+                "STANDARD_LOGWORK": "100",
+                "BILLABLE_PARAM": "1000"
+            },
+            "dynamic_variables": {
+                "TASK_COUNT": "Number of completed tasks",
+                "BUG_COUNT": "Number of completed bugs",
+                "LOG_HOURS": "Total log hours for employee in month/year",
+                "TICKET_POINT": "Ticket contribution point",
+                "LOGWORK_POINT": "Logwork contribution point",
+                "MEMBER_CONTR_POINT": "Member total contribution point (ticket + logwork)",
+                "TOTAL_TEAM_POINTS": "Total team contribution points",
+                "BILLABLE_PARAM": "Billable parameter from system"
+            }
+        },
+        "message": "Formulas retrieved successfully"
+    }
+    """
+    data = FormulaService.get_formula()
+    return ApiResponse.success(data=data, message="Formulas retrieved successfully")
+
+
+@formula_bp.route("", methods=["PUT"])
+@jwt_required()
+@admin_required
+def update_formula():
+    """Update formula string
+    
+    Request body:
+    {
+        "formula_string": "(TASK_COUNT * TASK_WEIGHT + BUG_COUNT * BUG_WEIGHT) * ROLE_WEIGHT / STANDARD_ROLE",
+        "formula_name": "TICKET_FORMULA_STRING"  // optional, defaults to TICKET_FORMULA_STRING
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "data": { ... },
+        "message": "Formula updated successfully"
+    }
+    """
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Request body is required",
+            "errors": None
+        }), 400
+    
+    formula_string = data.get("formula_string")
+    formula_name = data.get("formula_name", "TICKET_FORMULA_STRING")
+    
+    if not formula_string:
+        return jsonify({
+            "success": False,
+            "message": "formula_string is required",
+            "errors": None
+        }), 400
+    
+    result = FormulaService.update_formula(formula_string, formula_name)
+    
+    return ApiResponse.success(data=result, message="Formula updated successfully")
+
+
+@formula_bp.route("/params", methods=["PUT"])
+@jwt_required()
+@admin_required
+def update_params():
+    """Update formula parameters
+    
+    Request body:
+    {
+        "TASK_WEIGHT": 1,
+        "BUG_WEIGHT": 2,
+        "DEV_ROLE_WEIGHT": 1,
+        "BA_ROLE_WEIGHT": 1,
+        "QA_ROLE_WEIGHT": 1,
+        "STANDARD_DEV": 100,
+        "STANDARD_BA": 100,
+        "STANDARD_QA": 100,
+        "STANDARD_LOGWORK": 100,
+        "BILLABLE_PARAM": 1000
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "data": { ... },
+        "message": "Parameters updated successfully"
+    }
+    """
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Request body is required",
+            "errors": None
+        }), 400
+    
+    result = FormulaService.update_params(data)
+    
+    return ApiResponse.success(data=result, message="Parameters updated successfully")
+
+
+@formula_bp.route("/params", methods=["POST"])
+@jwt_required()
+@admin_required
+def add_param():
+    """Add a new formula parameter or formula
+    
+    Request body:
+    {
+        "param_key": "NEW_PARAM",
+        "param_value": "value",
+        "description": "Optional description",
+        "type": "param"  // or "formula" - defaults to "param"
+    }
+    
+    Examples:
+    - Add a parameter:
+      {"param_key": "NEW_WEIGHT", "param_value": "1.5", "type": "param"}
+    
+    - Add a formula with required params:
+      {
+        "param_key": "NEW_FORMULA_STRING",
+        "param_value": "(TASK_COUNT * CUSTOM_WEIGHT) * ROLE_WEIGHT",
+        "type": "formula",
+        "required_params": ["CUSTOM_WEIGHT", "ROLE_WEIGHT"]
+      }
+    
+    Returns:
+    {
+        "success": true,
+        "data": { ... },
+        "message": "Parameter added successfully"
+    }
+    """
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Request body is required",
+            "errors": None
+        }), 400
+    
+    param_key = data.get("param_key")
+    param_value = data.get("param_value")
+    description = data.get("description")
+    param_type = data.get("type", "param")  # "param" or "formula"
+    required_params = data.get("required_params")  # list of param keys
+    
+    if not param_key or not param_value:
+        return jsonify({
+            "success": False,
+            "message": "param_key and param_value are required",
+            "errors": None
+        }), 400
+    
+    if param_type not in ("param", "formula"):
+        return jsonify({
+            "success": False,
+            "message": "type must be 'param' or 'formula'",
+            "errors": None
+        }), 400
+    
+    result = FormulaService.add_param(param_key, param_value, description, param_type, required_params)
+    
+    return ApiResponse.success(data=result, message="Parameter added successfully")
+
+
+@formula_bp.route("/calculate", methods=["GET"])
+@jwt_required()
+def calculate_points_get():
+    """Calculate all points for all employees (GET)
+    
+    Query parameters:
+    - month: Month number (1-12) - required
+    - year: Year (optional, defaults to current year)
+    - employeeuuid: Filter by employee UUID (optional)
+    
+    Returns:
+    {
+        "success": true,
+        "data": [
+            {
+                "employee": {
+                    "id": "uuid",
+                    "employeeId": "EMP001",
+                    "en_full_name": "John Doe",
+                    "vn_full_name": "Nguyen Van A",
+                    "email": "john@company.com"
+                },
+                "month": 1,
+                "year": 2026,
+                "task_count": 5,
+                "bug_count": 3,
+                "ticket_point": 11.5,
+                "logwork_point": 8.0,
+                "member_contr_point": 19.5,
+                "total_team_points": 100.0,
+                "billable_point": 195.0,
+                "ticket_breakdown": [
+                    {"role": "DEV", "value": 0.11},
+                    {"role": "BA", "value": 0.11}
+                ]
+            },
+            ...
+        ],
+        "message": "Points calculated successfully"
+    }
+    """
+    # Get query parameters
+    month = request.args.get("month", type=int)
+    year = request.args.get("year", type=int)
+    employeeuuid = request.args.get("employeeuuid")
+    
+    # Validate required params
+    if not month:
+        return jsonify({
+            "success": False,
+            "message": "month is required",
+            "errors": None
+        }), 400
+    
+    if month < 1 or month > 12:
+        return jsonify({
+            "success": False,
+            "message": "month must be between 1 and 12",
+            "errors": None
+        }), 400
+    
+    # Calculate points
+    results = FormulaService.calculate_all_employees(
+        month=month,
+        year=year,
+        employeeuuid=employeeuuid
+    )
+    
+    return ApiResponse.success(data=results, message="Points calculated successfully")
+
+
+@formula_bp.route("/calculate", methods=["POST"])
+@jwt_required()
+def calculate_points_post():
+    """Calculate all points for all employees (POST)
+    
+    Request body:
+    {
+        "month": 1,
+        "year": 2026 (optional, defaults to current year),
+        "employeeuuid": "uuid" (optional, filter by employee)
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "data": [...],
+        "message": "Points calculated successfully"
+    }
+    """
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Request body is required",
+            "errors": None
+        }), 400
+    
+    month = data.get("month")
+    year = data.get("year")
+    employeeuuid = data.get("employeeuuid")
+    
+    # Validate required params
+    if not month:
+        return jsonify({
+            "success": False,
+            "message": "month is required",
+            "errors": None
+        }), 400
+    
+    if month < 1 or month > 12:
+        return jsonify({
+            "success": False,
+            "message": "month must be between 1 and 12",
+            "errors": None
+        }), 400
+    
+    # Calculate points
+    results = FormulaService.calculate_all_employees(
+        month=month,
+        year=year,
+        employeeuuid=employeeuuid
+    )
+    
+    return ApiResponse.success(data=results, message="Points calculated successfully")
+
+
+@formula_bp.route("/calculate/<string:employee_id>", methods=["GET"])
+@jwt_required()
+def calculate_employee_point(employee_id: str):
+    """Calculate all points for a single employee
+    
+    Query parameters:
+    - month: Month number (1-12) - required
+    - year: Year (optional, defaults to current year)
+    
+    Returns:
+    {
+        "success": true,
+        "data": {
+            "employee_id": "uuid",
+            "month": 1,
+            "year": 2026,
+            "task_count": 5,
+            "bug_count": 3,
+            "ticket_point": 11.5,
+            "logwork_point": 8.0,
+            "member_contr_point": 19.5,
+            "total_team_points": 100.0,
+            "billable_point": 195.0,
+            "ticket_breakdown": [...]
+        },
+        "message": "Point calculated successfully"
+    }
+    """
+    month = request.args.get("month", type=int)
+    year = request.args.get("year", type=int)
+    
+    if not month:
+        return jsonify({
+            "success": False,
+            "message": "month is required",
+            "errors": None
+        }), 400
+    
+    if month < 1 or month > 12:
+        return jsonify({
+            "success": False,
+            "message": "month must be between 1 and 12",
+            "errors": None
+        }), 400
+    
+    # Verify employee exists
+    employee = EmployeeDAO.get_by_id(employee_id)
+    if not employee:
+        return jsonify({
+            "success": False,
+            "message": "Employee not found",
+            "errors": None
+        }), 404
+    
+    # Get current year if not provided
+    if not year:
+        year = datetime.now().year
+    
+    # Calculate all points for the employee
+    result = FormulaService.calculate_employee_all_points(
+        employee_id=employee_id,
+        month=month,
+        year=year
+    )
+    
+    # Also calculate total team points and billable for single employee
+    # Need to get all employees to calculate total team points
+    all_results = FormulaService.calculate_all_employees(
+        month=month,
+        year=year,
+        employeeuuid=employee_id
+    )
+    
+    if all_results:
+        result["total_team_points"] = all_results[0].get("total_team_points", 0)
+        result["billable_point"] = all_results[0].get("billable_point", 0)
+    
+    return ApiResponse.success(data=result, message="Point calculated successfully")
+
