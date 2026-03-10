@@ -11,6 +11,7 @@ from app.routes.role_router import role_bp
 from app.routes.ticket_router import ticket_bp
 from app.routes.ticket_type_router import ticket_type_bp
 from app.routes.ticket_status_router import ticket_status_bp
+from app.routes.formula_router import formula_bp
 
 api_bp.register_blueprint(auth_bp, url_prefix="/auth")
 api_bp.register_blueprint(employee_bp, url_prefix="/employees")
@@ -21,3 +22,4 @@ api_bp.register_blueprint(role_bp, url_prefix="/roles")
 api_bp.register_blueprint(ticket_bp, url_prefix="/tickets")
 api_bp.register_blueprint(ticket_type_bp, url_prefix="/ticket-types")
 api_bp.register_blueprint(ticket_status_bp, url_prefix="/ticket-statuses")
+api_bp.register_blueprint(formula_bp, url_prefix="/formulas")
