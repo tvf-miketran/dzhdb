@@ -1,12 +1,10 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required
 from datetime import datetime
-import calendar
 
 from app.services.formula_service import FormulaService
 from app.responses import ApiResponse
 from app.utils.decorators import admin_required
-from app.utils.query_helpers import parse_list_param, parse_int_list_param
 from app.dao.employee_dao import EmployeeDAO
 
 formula_bp = Blueprint("formula", __name__)
@@ -37,12 +35,11 @@ def get_formula():
             "formulas": [
                 {
                     "name": "TICKET_FORMULA_STRING",
-                    "value": "(TASK_COUNT * TASK_WEIGHT + BUG_COUNT * BUG_WEIGHT) * ROLE_WEIGHT / STANDARD_ROLE",
-                    "required_params": ["TASK_WEIGHT", "BUG_WEIGHT", "ROLE_WEIGHT", "STANDARD_ROLE"]
+                    "value": "(TASK_COUNT * TASK_WEIGHT + BUG_COUNT * BUG_WEIGHT) * ROLE_WEIGHT / STANDARD_ROLE"
                 },
-                {"name": "LOGWORK_FORMULA_STRING", "value": "LOG_HOURS / STANDARD_LOGWORK", "required_params": ["STANDARD_LOGWORK"]},
-                {"name": "MEMBER_CONTR_POINT_FORMULA_STRING", "value": "TICKET_POINT + LOGWORK_POINT", "required_params": []},
-                {"name": "BILLABLE_POINT_FORMULA_STRING", "value": "MEMBER_CONTR_POINT / TOTAL_TEAM_POINTS * BILLABLE_PARAM", "required_params": ["BILLABLE_PARAM"]}
+                {"name": "LOGWORK_FORMULA_STRING", "value": "LOG_HOURS / STANDARD_LOGWORK"},
+                {"name": "MEMBER_CONTR_POINT_FORMULA_STRING", "value": "TICKET_POINT + LOGWORK_POINT"},
+                {"name": "BILLABLE_POINT_FORMULA_STRING", "value": "MEMBER_CONTR_POINT / TOTAL_TEAM_POINTS * BILLABLE_PARAM"}
             ],
             "parameters": {
                 "TASK_WEIGHT": "1",
@@ -195,35 +192,32 @@ def update_params():
 @jwt_required()
 @admin_required
 def add_param():
-    """Add a new formula parameter or formula
+    """Add new formula parameters or formulas
     
-    Request body:
+    Request body (array format):
     {
-        "param_key": "NEW_PARAM",
-        "param_value": "value",
-        "description": "Optional description",
-        "type": "param",  // or "formula" - defaults to "param"
-        "required_params": ["CUSTOM_WEIGHT"],  // only for type="formula"
+        "params": [
+            {
+                "param_key": "NEW_PARAM_1",
+                "param_value": "value1",
+                "description": "Optional description",
+                "type": "param"  // or "formula", defaults to "param"
+            },
+            {
+                "param_key": "NEW_FORMULA_STRING",
+                "param_value": "(TASK_COUNT * CUSTOM_WEIGHT) * ROLE_WEIGHT",
+                "type": "formula",
+                "description": "Optional description"
+            }
+        ],
         "month": 1  // optional, defaults to current month
     }
-    
-    Examples:
-    - Add a parameter:
-      {"param_key": "NEW_WEIGHT", "param_value": "1.5", "type": "param"}
-    
-    - Add a formula with required params:
-      {
-        "param_key": "NEW_FORMULA_STRING",
-        "param_value": "(TASK_COUNT * CUSTOM_WEIGHT) * ROLE_WEIGHT",
-        "type": "formula",
-        "required_params": ["CUSTOM_WEIGHT", "ROLE_WEIGHT"]
-      }
     
     Returns:
     {
         "success": true,
         "data": { ... },
-        "message": "Parameter added successfully"
+        "message": "Parameters added successfully"
     }
     """
     data = request.get_json()
@@ -235,12 +229,8 @@ def add_param():
             "errors": None
         }), 400
     
-    param_key = data.get("param_key")
-    param_value = data.get("param_value")
-    description = data.get("description")
-    param_type = data.get("type", "param")  # "param" or "formula"
-    required_params = data.get("required_params")  # list of param keys
-    month = data.get("month")  # month for storing params
+    params = data.get("params")
+    month = data.get("month")
     
     # Validate month if provided
     if month is not None and (month < 1 or month > 12):
@@ -250,27 +240,48 @@ def add_param():
             "errors": None
         }), 400
     
-    if not param_key or not param_value:
+    if not params or not isinstance(params, list):
         return jsonify({
             "success": False,
-            "message": "param_key and param_value are required",
+            "message": "params is required and must be an array",
             "errors": None
         }), 400
     
-    if param_type not in ("param", "formula"):
-        return jsonify({
-            "success": False,
-            "message": "type must be 'param' or 'formula'",
-            "errors": None
-        }), 400
+    # Validate each param in the array
+    for idx, param in enumerate(params):
+        if not isinstance(param, dict):
+            return jsonify({
+                "success": False,
+                "message": f"params[{idx}] must be an object",
+                "errors": None
+            }), 400
+        
+        param_key = param.get("param_key")
+        param_value = param.get("param_value")
+        param_type = param.get("type", "param")
+        
+        if not param_key or not param_value:
+            return jsonify({
+                "success": False,
+                "message": f"params[{idx}]: param_key and param_value are required",
+                "errors": None
+            }), 400
+        
+        if param_type not in ("param", "formula"):
+            return jsonify({
+                "success": False,
+                "message": f"params[{idx}]: type must be 'param' or 'formula'",
+                "errors": None
+            }), 400
     
-    result = FormulaService.add_param(param_key, param_value, description, param_type, required_params, month)
+    result = FormulaService.add_params(params, month)
     
-    return ApiResponse.success(data=result, message="Parameter added successfully")
+    return ApiResponse.success(data=result, message="Parameters added successfully")
 
 
 @formula_bp.route("/calculate", methods=["GET"])
 @jwt_required()
+@admin_required
 def calculate_points_get():
     """Calculate all points for all employees (GET)
     
@@ -345,6 +356,7 @@ def calculate_points_get():
 
 @formula_bp.route("/calculate", methods=["POST"])
 @jwt_required()
+@admin_required
 def calculate_points_post():
     """Calculate all points for all employees (POST)
     

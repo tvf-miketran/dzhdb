@@ -8,9 +8,6 @@ from app import db
 class FormulaDAO:
     """DAO for managing formula system parameters in the database"""
 
-    # Key for storing formula required params mapping
-    FORMULA_REQUIRED_PARAMS_KEY = "FORMULA_REQUIRED_PARAMS"
-
     @staticmethod
     def get_current_month() -> int:
         """Get current month number (1-12)"""
@@ -173,59 +170,6 @@ class FormulaDAO:
         return result
 
     @staticmethod
-    def get_formula_required_params(formula_key: str = None) -> Dict[str, List[str]]:
-        """Get formula required params mapping from database
-        
-        Args:
-            formula_key: If provided, returns only that formula's required params
-            
-        Returns:
-            Dict mapping formula_key -> list of required param keys
-        """
-        param = SystemParameter.query.filter_by(param_key=FormulaDAO.FORMULA_REQUIRED_PARAMS_KEY).first()
-        if param and param.param_value:
-            try:
-                mapping = json.loads(param.param_value)
-                if formula_key:
-                    return mapping.get(formula_key, [])
-                return mapping
-            except (json.JSONDecodeError, TypeError):
-                pass
-        return {} if formula_key is None else []
-    
-    @staticmethod
-    def set_formula_required_params(mapping: Dict[str, List[str]]) -> None:
-        """Store formula required params mapping in database
-        
-        Args:
-            mapping: Dict mapping formula_key -> list of required param keys
-        """
-        param = SystemParameter.query.filter_by(param_key=FormulaDAO.FORMULA_REQUIRED_PARAMS_KEY).first()
-        if param:
-            param.param_value = json.dumps(mapping)
-            param.description = "Formula required parameters mapping"
-        else:
-            param = SystemParameter(
-                param_key=FormulaDAO.FORMULA_REQUIRED_PARAMS_KEY,
-                param_value=json.dumps(mapping),
-                description="Formula required parameters mapping"
-            )
-            db.session.add(param)
-        db.session.commit()
-    
-    @staticmethod
-    def add_formula_required_param(formula_key: str, required_params: List[str]) -> None:
-        """Add required params to a formula
-        
-        Args:
-            formula_key: The formula key
-            required_params: List of required parameter keys
-        """
-        mapping = FormulaDAO.get_formula_required_params()
-        mapping[formula_key] = required_params
-        FormulaDAO.set_formula_required_params(mapping)
-    
-    @staticmethod
     def is_ticket_formula(formula_key: str) -> bool:
         """Check if formula key is for ticket"""
         return formula_key.startswith("TICKET_")
@@ -289,8 +233,38 @@ class FormulaDAO:
         db.session.commit()
 
     @staticmethod
-    def add_param(param_key: str, param_value: str, description: str = None, param_type: str = "param", required_params: List[str] = None, month: int = None) -> Dict[str, Any]:
-        """Add a new formula parameter or formula
+    def add_params(params: List[Dict[str, Any]], month: int = None) -> Dict[str, Any]:
+        """Add new formula parameters or formulas
+        
+        Args:
+            params: List of param objects, each containing:
+                - param_key: The parameter/formula key to add
+                - param_value: The parameter/formula value
+                - description: Optional description
+                - param_type: Type of item to add - "param" or "formula" (default: "param")
+            month: Month number (1-12). If provided, stores with month prefix.
+            
+        Returns:
+            Dict with all formula params after adding
+        """
+        # Process each param in the array
+        for param in params:
+            param_key = param.get("param_key")
+            param_value = param.get("param_value")
+            description = param.get("description")
+            
+            # Create the system parameter with month prefix if provided
+            FormulaDAO.set_param(param_key, param_value, month, description)
+        
+        # Return current params and formulas
+        return {
+            "parameters": FormulaDAO.get_all_params(month),
+            "formulas": FormulaDAO.get_formulas(month)
+        }
+    
+    @staticmethod
+    def add_param(param_key: str, param_value: str, description: str = None, param_type: str = "param", month: int = None) -> Dict[str, Any]:
+        """Add a new formula parameter or formula (legacy single param method)
         
         Creates a new system parameter row. For formulas (param_type="formula"), 
         keys ending with _FORMULA_STRING are auto-detected.
@@ -300,22 +274,17 @@ class FormulaDAO:
             param_value: The parameter/formula value
             description: Optional description
             param_type: Type of item to add - "param" or "formula" (default: "param")
-            required_params: List of parameter keys this formula requires (only for type="formula")
             month: Month number (1-12). If provided, stores with month prefix.
             
         Returns:
             Dict with all formula params after adding
         """
-        # Create the system parameter with month prefix if provided
-        FormulaDAO.set_param(param_key, param_value, month, description)
-        
-        # Store required params mapping if provided for a formula
-        if param_type == "formula" and required_params:
-            FormulaDAO.add_formula_required_param(param_key, required_params)
-        
-        # Return current params and formulas
-        return {
-            "parameters": FormulaDAO.get_all_params(month),
-            "formulas": FormulaDAO.get_formulas(month)
-        }
+        # Convert single param to array format
+        params = [{
+            "param_key": param_key,
+            "param_value": param_value,
+            "description": description,
+            "param_type": param_type
+        }]
+        return FormulaDAO.add_params(params, month)
 
