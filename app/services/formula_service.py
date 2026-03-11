@@ -87,7 +87,7 @@ class FormulaService:
                 ticket_data = FormulaService.calculate_ticket_point(employee_id, month)
                 ticket_point = ticket_data.get("ticket_point", 0.0)
                 logwork_point = FormulaService.calculate_logwork_point(employee_id, month, year)
-            return FormulaService.calculate_member_contr_point(ticket_point, logwork_point)
+            return FormulaService.calculate_member_contr_point(ticket_point, logwork_point, month)
         
         elif variable_name == "TOTAL_TEAM_POINTS":
             # Return pre-calculated total team points
@@ -299,7 +299,6 @@ class FormulaService:
         employee_id: str,
         month: int,
         formula_string: str = None,
-        param_month: int = None,
     ) -> Dict[str, Any]:
         """Calculate ticket point for a single employee
         
@@ -307,20 +306,27 @@ class FormulaService:
             employee_id: The employee UUID
             month: Month number (1-12)
             formula_string: Optional custom formula (defaults to stored formula)
-            param_month: Month for fetching parameters (defaults to month)
             
         Returns:
             Dict with ticket_point and breakdown
         """
-        if param_month is None:
-            param_month = month
-        
-        # Get formula
+        # Get formula - CRITICAL: validate formula_string is not None or empty
         if not formula_string:
-            formula_string = FormulaService._get_param("TICKET_FORMULA_STRING", param_month)
+            formula_string = FormulaService._get_param("TICKET_FORMULA_STRING", month)
+        
+        # CRITICAL: If still no formula, return 0 with clear reason
+        if not formula_string:
+            print(f"[WARNING] TICKET_FORMULA_STRING not found in database for month {month}")
+            return {
+                "employee_id": employee_id,
+                "task_count": 0,
+                "bug_count": 0,
+                "ticket_point": 0.0,
+                "breakdown": []
+            }
         
         # Get all parameters from database
-        all_params = FormulaDAO.get_all_params(param_month)
+        all_params = FormulaDAO.get_all_params(month)
         
         # Build static params context (except formula strings)
         static_context = {}
@@ -374,7 +380,7 @@ class FormulaService:
                         role_task_count += 1
             
             # Get role weight and standard
-            role_weight, standard = FormulaService.get_role_weights_and_standard(role_name, param_month)
+            role_weight, standard = FormulaService.get_role_weights_and_standard(role_name, month)
             
             # Build context for this role - start with static params
             context = static_context.copy()
@@ -384,12 +390,15 @@ class FormulaService:
             context["BUG_COUNT"] = role_bug_count
             
             # Calculate using MathEngine
+            point = 0.0
             try:
                 engine = MathEngine()
                 result = engine.calculate(formula_string, context)
                 point = float(result)
+            except ZeroDivisionError as e:
+                print(f"[WARNING] Division by zero in ticket_point calculation: {e}")
             except Exception as e:
-                point = 0.0
+                print(f"[WARNING] Error calculating ticket_point with formula '{formula_string}': {e}")
             
             total_point += point
             
@@ -420,7 +429,6 @@ class FormulaService:
         month: int,
         year: int = None,
         formula_string: str = None,
-        param_month: int = None,
     ) -> float:
         """Calculate logwork point for a single employee
         
@@ -429,23 +437,24 @@ class FormulaService:
             month: Month number (1-12)
             year: Year (optional, defaults to current year)
             formula_string: Optional custom formula (defaults to stored formula)
-            param_month: Month for fetching parameters (defaults to month)
             
         Returns:
             Logwork point value
         """
-        if param_month is None:
-            param_month = month
-        
-        # Get formula
+        # Get formula - CRITICAL: validate formula_string is not None or empty
         if not formula_string:
-            formula_string = FormulaService._get_param("LOGWORK_FORMULA_STRING", param_month)
+            formula_string = FormulaService._get_param("LOGWORK_FORMULA_STRING", month)
+        
+        # CRITICAL: If still no formula, return 0 with clear reason
+        if not formula_string:
+            print(f"[WARNING] LOGWORK_FORMULA_STRING not found in database for month {month}")
+            return 0.0
         
         # Get LOG_HOURS dynamic variable
         log_hours = FormulaService._get_logwork_hours(employee_id, month, year)
         
         # Get all parameters from database
-        all_params = FormulaDAO.get_all_params(param_month)
+        all_params = FormulaDAO.get_all_params(month)
         
         # Build context
         context = {}
@@ -459,35 +468,45 @@ class FormulaService:
         # Add LOG_HOURS to context
         context["LOG_HOURS"] = log_hours
         
-        # Calculate using MathEngine
+        # Calculate using MathEngine with proper error handling
         try:
             engine = MathEngine()
             result = engine.calculate(formula_string, context)
             return float(result)
+        except ZeroDivisionError as e:
+            print(f"[WARNING] Division by zero in logwork_point calculation: {e}")
+            return 0.0
         except Exception as e:
+            print(f"[WARNING] Error calculating logwork_point with formula '{formula_string}': {e}")
             return 0.0
     
     @staticmethod
     def calculate_member_contr_point(
         ticket_point: float,
         logwork_point: float,
+        month: int,
         formula_string: str = None,
-        param_month: int = None,
     ) -> float:
         """Calculate member contribution point
         
         Args:
             ticket_point: Ticket point from TICKET_FORMULA_STRING
             logwork_point: Logwork point from LOGWORK_FORMULA_STRING
+            month: Month number (1-12)
             formula_string: Optional custom formula (defaults to stored formula)
-            param_month: Month for fetching parameters (defaults to month)
             
         Returns:
             Member contribution point
         """
-        # Get formula
+        # Get formula - CRITICAL: validate formula_string is not None or empty
         if not formula_string:
-            formula_string = FormulaService._get_param("MEMBER_CONTR_POINT_FORMULA_STRING", param_month)
+            formula_string = FormulaService._get_param("MEMBER_CONTR_POINT_FORMULA_STRING", month)
+        
+        # CRITICAL: If still no formula, return 0 with clear reason
+        if not formula_string:
+            print(f"[WARNING] MEMBER_CONTR_POINT_FORMULA_STRING not found in database for month {month}")
+            # Fallback to simple addition
+            return ticket_point + logwork_point
         
         # Build context with dynamic values
         context = {
@@ -495,39 +514,49 @@ class FormulaService:
             "LOGWORK_POINT": logwork_point,
         }
         
-        # Calculate using MathEngine
+        # Calculate using MathEngine with proper error handling
         try:
             engine = MathEngine()
             result = engine.calculate(formula_string, context)
             return float(result)
+        except ZeroDivisionError as e:
+            print(f"[WARNING] Division by zero in member_contr_point calculation: {e}")
+            # Fallback to simple addition
+            return ticket_point + logwork_point
         except Exception as e:
-            # Fallback to simple addition if formula fails
+            print(f"[WARNING] Error calculating member_contr_point with formula '{formula_string}': {e}")
+            # Fallback to simple addition
             return ticket_point + logwork_point
     
     @staticmethod
     def calculate_billable_point(
         member_contr_point: float,
         total_team_points: float,
+        month: int,
         formula_string: str = None,
-        param_month: int = None,
     ) -> float:
         """Calculate billable point
         
         Args:
             member_contr_point: Member contribution point
             total_team_points: Total team contribution points
+            month: Month number (1-12)
             formula_string: Optional custom formula (defaults to stored formula)
-            param_month: Month for fetching parameters (defaults to month)
             
         Returns:
             Billable point
         """
-        # Get formula
+        # Get formula - CRITICAL: validate formula_string is not None or empty
         if not formula_string:
-            formula_string = FormulaService._get_param("BILLABLE_POINT_FORMULA_STRING", param_month)
+            formula_string = FormulaService._get_param("BILLABLE_POINT_FORMULA_STRING", month)
+        
+        # CRITICAL: If still no formula, return 0 with clear reason
+        if not formula_string:
+            print(f"[WARNING] BILLABLE_POINT_FORMULA_STRING not found in database for month {month}")
+            return 0.0
         
         # Get BILLABLE_PARAM from system params
-        billable_param = FormulaService._get_param("BILLABLE_PARAM", param_month)
+        billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
         billable_param_value = float(billable_param) if billable_param else 0.0
         
         # Build context with dynamic values
@@ -537,13 +566,20 @@ class FormulaService:
             "BILLABLE_PARAM": billable_param_value,
         }
         
-        # Calculate using MathEngine
+        # Calculate using MathEngine with proper error handling
         try:
             engine = MathEngine()
             result = engine.calculate(formula_string, context)
             return float(result)
+        except ZeroDivisionError as e:
+            # Handle division by zero explicitly
+            print(f"[WARNING] Division by zero in billable_point calculation: {e}")
+            if total_team_points > 0:
+                return (member_contr_point / total_team_points) * billable_param_value
+            return 0.0
         except Exception as e:
             # Fallback to simple calculation if formula fails
+            print(f"[WARNING] Error calculating billable_point with formula '{formula_string}': {e}")
             if total_team_points > 0:
                 return (member_contr_point / total_team_points) * billable_param_value
             return 0.0
@@ -588,7 +624,7 @@ class FormulaService:
         logwork_point = FormulaService.calculate_logwork_point(employee_id, month, year)
         
         # 3. Calculate MEMBER_CONTR_POINT
-        member_contr_point = FormulaService.calculate_member_contr_point(ticket_point, logwork_point)
+        member_contr_point = FormulaService.calculate_member_contr_point(ticket_point, logwork_point, month)
         
         # Return all points (billable will be calculated in calculate_all_employees after getting total team points)
         return {
@@ -676,7 +712,8 @@ class FormulaService:
         for result in results:
             billable_point = FormulaService.calculate_billable_point(
                 member_contr_point=result["member_contr_point"],
-                total_team_points=total_team_points
+                total_team_points=total_team_points,
+                month=month
             )
             result["total_team_points"] = total_team_points
             result["billable_point"] = billable_point
