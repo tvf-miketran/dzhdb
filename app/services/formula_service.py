@@ -183,19 +183,15 @@ class FormulaService:
         # Get all formulas (keys ending with _FORMULA_STRING)
         formulas = FormulaDAO.get_formulas(month)
         
-        # Get required params mapping
-        required_params_mapping = FormulaDAO.get_formula_required_params()
-        
         # Get dynamic variables
         dynamic_variables = FormulaService.get_dynamic_variables()
         
-        # Build list of formulas with name, value, and required_params
+        # Build list of formulas with name and value
         formula_list = []
         for formula_key, formula_value in formulas.items():
             formula_list.append({
                 "name": formula_key,
-                "value": formula_value or "",
-                "required_params": required_params_mapping.get(formula_key, [])
+                "value": formula_value or ""
             })
         
         # Get all params (keys NOT ending with _FORMULA_STRING)
@@ -233,21 +229,44 @@ class FormulaService:
         return FormulaService.get_formula(month)
     
     @staticmethod
-    def add_param(param_key: str, param_value: str, description: str = None, param_type: str = "param", required_params: List[str] = None, month: int = None) -> Dict[str, Any]:
-        """Add a new formula parameter or formula
+    def add_params(params: List[Dict[str, Any]], month: int = None) -> Dict[str, Any]:
+        """Add new formula parameters or formulas
+        
+        Args:
+            params: List of param objects, each containing:
+                - param_key: The parameter/formula key to add
+                - param_value: The parameter/formula value
+                - description: Optional description
+                - param_type: Type of item to add - "param" or "formula" (default: "param")
+            month: Month number (1-12). If provided, stores with month prefix.
+        
+        Returns:
+            Dict with all formulas and params after adding
+        """
+        return FormulaDAO.add_params(params, month)
+    
+    @staticmethod
+    def add_param(param_key: str, param_value: str, description: str = None, param_type: str = "param", month: int = None) -> Dict[str, Any]:
+        """Add a new formula parameter or formula (legacy single param method)
         
         Args:
             param_key: The parameter/formula key to add
             param_value: The parameter/formula value
             description: Optional description
             param_type: Type of item to add - "param" or "formula" (default: "param")
-            required_params: List of parameter keys this formula requires (only for type="formula")
             month: Month number (1-12). If provided, stores with month prefix.
         
         Returns:
             Dict with all formulas and params after adding
         """
-        return FormulaDAO.add_param(param_key, param_value, description, param_type, required_params, month)
+        # Convert single param to array format
+        params = [{
+            "param_key": param_key,
+            "param_value": param_value,
+            "description": description,
+            "param_type": param_type
+        }]
+        return FormulaDAO.add_params(params, month)
     
     @staticmethod
     def get_role_weights_and_standard(role: str, month: int = None) -> Tuple[float, float]:
