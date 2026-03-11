@@ -17,6 +17,9 @@ formula_bp = Blueprint("formula", __name__)
 def get_formula():
     """Get all formulas and all parameters
     
+    Query parameters:
+    - month: Month number (1-12) - optional, defaults to current month
+    
     Dynamic variables (computed at runtime):
     - TASK_COUNT: Number of completed tasks
     - BUG_COUNT: Number of completed bugs
@@ -67,7 +70,18 @@ def get_formula():
         "message": "Formulas retrieved successfully"
     }
     """
-    data = FormulaService.get_formula()
+    # Get month parameter (optional, defaults to current month)
+    month = request.args.get("month", type=int)
+    
+    # Validate month if provided
+    if month is not None and (month < 1 or month > 12):
+        return jsonify({
+            "success": False,
+            "message": "month must be between 1 and 12",
+            "errors": None
+        }), 400
+    
+    data = FormulaService.get_formula(month)
     return ApiResponse.success(data=data, message="Formulas retrieved successfully")
 
 
@@ -79,8 +93,9 @@ def update_formula():
     
     Request body:
     {
-        "formula_string": "(TASK_COUNT * TASK_WEIGHT + BUG_COUNT * BUG_WEIGHT) * ROLE_WEIGHT / STANDARD_ROLE",
-        "formula_name": "TICKET_FORMULA_STRING"  // optional, defaults to TICKET_FORMULA_STRING
+        "formula_string": "(TICKET_COUNT * TASK_WEIGHT + BUG_COUNT * BUG_WEIGHT) * ROLE_WEIGHT / STANDARD_ROLE",
+        "formula_name": "TICKET_FORMULA_STRING",  // optional, defaults to TICKET_FORMULA_STRING
+        "month": 1  // optional, defaults to current month
     }
     
     Returns:
@@ -101,6 +116,15 @@ def update_formula():
     
     formula_string = data.get("formula_string")
     formula_name = data.get("formula_name", "TICKET_FORMULA_STRING")
+    month = data.get("month")
+    
+    # Validate month if provided
+    if month is not None and (month < 1 or month > 12):
+        return jsonify({
+            "success": False,
+            "message": "month must be between 1 and 12",
+            "errors": None
+        }), 400
     
     if not formula_string:
         return jsonify({
@@ -109,7 +133,7 @@ def update_formula():
             "errors": None
         }), 400
     
-    result = FormulaService.update_formula(formula_string, formula_name)
+    result = FormulaService.update_formula(formula_string, formula_name, month)
     
     return ApiResponse.success(data=result, message="Formula updated successfully")
 
@@ -131,7 +155,8 @@ def update_params():
         "STANDARD_BA": 100,
         "STANDARD_QA": 100,
         "STANDARD_LOGWORK": 100,
-        "BILLABLE_PARAM": 1000
+        "BILLABLE_PARAM": 1000,
+        "month": 1  // optional, defaults to current month
     }
     
     Returns:
@@ -150,7 +175,18 @@ def update_params():
             "errors": None
         }), 400
     
-    result = FormulaService.update_params(data)
+    # Extract month from data
+    month = data.pop("month", None)
+    
+    # Validate month if provided
+    if month is not None and (month < 1 or month > 12):
+        return jsonify({
+            "success": False,
+            "message": "month must be between 1 and 12",
+            "errors": None
+        }), 400
+    
+    result = FormulaService.update_params(data, month)
     
     return ApiResponse.success(data=result, message="Parameters updated successfully")
 
@@ -166,7 +202,9 @@ def add_param():
         "param_key": "NEW_PARAM",
         "param_value": "value",
         "description": "Optional description",
-        "type": "param"  // or "formula" - defaults to "param"
+        "type": "param",  // or "formula" - defaults to "param"
+        "required_params": ["CUSTOM_WEIGHT"],  // only for type="formula"
+        "month": 1  // optional, defaults to current month
     }
     
     Examples:
@@ -202,6 +240,15 @@ def add_param():
     description = data.get("description")
     param_type = data.get("type", "param")  # "param" or "formula"
     required_params = data.get("required_params")  # list of param keys
+    month = data.get("month")  # month for storing params
+    
+    # Validate month if provided
+    if month is not None and (month < 1 or month > 12):
+        return jsonify({
+            "success": False,
+            "message": "month must be between 1 and 12",
+            "errors": None
+        }), 400
     
     if not param_key or not param_value:
         return jsonify({
@@ -217,7 +264,7 @@ def add_param():
             "errors": None
         }), 400
     
-    result = FormulaService.add_param(param_key, param_value, description, param_type, required_params)
+    result = FormulaService.add_param(param_key, param_value, description, param_type, required_params, month)
     
     return ApiResponse.success(data=result, message="Parameter added successfully")
 
@@ -231,6 +278,7 @@ def calculate_points_get():
     - month: Month number (1-12) - required
     - year: Year (optional, defaults to current year)
     - employeeuuid: Filter by employee UUID (optional)
+    - latest: If true, recalculate. If false (default), fetch from stored data.
     
     Returns:
     {
@@ -267,6 +315,7 @@ def calculate_points_get():
     month = request.args.get("month", type=int)
     year = request.args.get("year", type=int)
     employeeuuid = request.args.get("employeeuuid")
+    latest = request.args.get("latest", type=lambda x: x.lower() == "true", default=False)
     
     # Validate required params
     if not month:
@@ -287,7 +336,8 @@ def calculate_points_get():
     results = FormulaService.calculate_all_employees(
         month=month,
         year=year,
-        employeeuuid=employeeuuid
+        employeeuuid=employeeuuid,
+        latest=latest
     )
     
     return ApiResponse.success(data=results, message="Points calculated successfully")
@@ -301,8 +351,9 @@ def calculate_points_post():
     Request body:
     {
         "month": 1,
-        "year": 2026 (optional, defaults to current year),
-        "employeeuuid": "uuid" (optional, filter by employee)
+        "year": 2026,  // optional, defaults to current year
+        "employeeuuid": "uuid",  // optional, filter by employee
+        "latest": true  // optional, defaults to false - if true, recalculate
     }
     
     Returns:
@@ -324,6 +375,7 @@ def calculate_points_post():
     month = data.get("month")
     year = data.get("year")
     employeeuuid = data.get("employeeuuid")
+    latest = data.get("latest", False)
     
     # Validate required params
     if not month:
@@ -344,7 +396,8 @@ def calculate_points_post():
     results = FormulaService.calculate_all_employees(
         month=month,
         year=year,
-        employeeuuid=employeeuuid
+        employeeuuid=employeeuuid,
+        latest=latest
     )
     
     return ApiResponse.success(data=results, message="Points calculated successfully")
@@ -358,6 +411,7 @@ def calculate_employee_point(employee_id: str):
     Query parameters:
     - month: Month number (1-12) - required
     - year: Year (optional, defaults to current year)
+    - latest: If true, recalculate. If false (default), fetch from stored data.
     
     Returns:
     {
@@ -380,6 +434,7 @@ def calculate_employee_point(employee_id: str):
     """
     month = request.args.get("month", type=int)
     year = request.args.get("year", type=int)
+    latest = request.args.get("latest", type=lambda x: x.lower() == "true", default=False)
     
     if not month:
         return jsonify({
@@ -412,7 +467,8 @@ def calculate_employee_point(employee_id: str):
     result = FormulaService.calculate_employee_all_points(
         employee_id=employee_id,
         month=month,
-        year=year
+        year=year,
+        latest=latest
     )
     
     # Also calculate total team points and billable for single employee
@@ -420,7 +476,8 @@ def calculate_employee_point(employee_id: str):
     all_results = FormulaService.calculate_all_employees(
         month=month,
         year=year,
-        employeeuuid=employee_id
+        employeeuuid=employee_id,
+        latest=latest
     )
     
     if all_results:
