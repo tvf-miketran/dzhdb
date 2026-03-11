@@ -15,13 +15,8 @@ from app.utils.math_engine import MathEngine
 class FormulaService:
     """Service for managing formulas and calculating employee points"""
     
-    # Default formula string
-    DEFAULT_TICKET_FORMULA = "(TASK_COUNT * TASK_WEIGHT + BUG_COUNT * BUG_WEIGHT) * ROLE_WEIGHT / STANDARD_ROLE"
-    DEFAULT_LOGWORK_FORMULA = "LOG_HOURS / STANDARD_LOGWORK"
-    DEFAULT_MEMBER_CONTR_FORMULA = "TICKET_POINT + LOGWORK_POINT"
-    DEFAULT_BILLABLE_FORMULA = "MEMBER_CONTR_POINT / TOTAL_TEAM_POINTS * BILLABLE_PARAM"
-    
     # Known dynamic variables that are computed at runtime
+    # These remain fixed in code - need new methods to add new dynamic variables
     # Format: "VARIABLE_NAME": "description"
     DYNAMIC_VARIABLES = {
         "TASK_COUNT": "Number of completed tasks",
@@ -102,7 +97,7 @@ class FormulaService:
             return 0.0
         
         elif variable_name == "BILLABLE_PARAM":
-            # Get BILLABLE_PARAM from system params
+            # Get BILLABLE_PARAM from system params (with month)
             billable_param = FormulaService._get_param("BILLABLE_PARAM")
             return float(billable_param) if billable_param else 0.0
         
@@ -168,20 +163,25 @@ class FormulaService:
         return FormulaService.DYNAMIC_VARIABLES.copy()
     
     @staticmethod
-    def _get_param(param_key: str) -> Optional[str]:
+    def _get_param(param_key: str, month: int = None) -> Optional[str]:
         """Get system parameter value by key"""
-        return FormulaDAO.get_param(param_key)
+        return FormulaDAO.get_param(param_key, month)
     
     @staticmethod
-    def _set_param(param_key: str, param_value: str, description: str = None) -> SystemParameter:
+    def _set_param(param_key: str, param_value: str, month: int = None, description: str = None) -> SystemParameter:
         """Set system parameter value"""
-        return FormulaDAO.set_param(param_key, param_value, description)
+        return FormulaDAO.set_param(param_key, param_value, month, description)
     
     @staticmethod
-    def get_formula() -> Dict[str, Any]:
-        """Get all formulas and all parameters"""
-        # Get all formula name keys
-        formula_name_keys = FormulaDAO.get_formula_name_keys()
+    def get_formula(month: int = None) -> Dict[str, Any]:
+        """Get all formulas and all parameters
+        
+        Args:
+            month: Month number (1-12). If provided, gets params for that month.
+                  If None, defaults to current month.
+        """
+        # Get all formulas (keys ending with _FORMULA_STRING)
+        formulas = FormulaDAO.get_formulas(month)
         
         # Get required params mapping
         required_params_mapping = FormulaDAO.get_formula_required_params()
@@ -190,51 +190,50 @@ class FormulaService:
         dynamic_variables = FormulaService.get_dynamic_variables()
         
         # Build list of formulas with name, value, and required_params
-        formulas = []
-        for formula_key in formula_name_keys:
-            formula_value = FormulaService._get_param(formula_key)
-            formulas.append({
+        formula_list = []
+        for formula_key, formula_value in formulas.items():
+            formula_list.append({
                 "name": formula_key,
                 "value": formula_value or "",
                 "required_params": required_params_mapping.get(formula_key, [])
             })
         
-        # Get all params and filter out formula strings (they're already in formulas)
-        all_params = FormulaDAO.get_all_params()
-        params = {}
-        for key, value in all_params.items():
-            if not key.endswith("_FORMULA_STRING"):
-                params[key] = value
+        # Get all params (keys NOT ending with _FORMULA_STRING)
+        params = FormulaDAO.get_all_params(month)
         
         return {
-            "formulas": formulas,
+            "formulas": formula_list,
             "parameters": params,
             "dynamic_variables": dynamic_variables
         }
     
     @staticmethod
-    def update_formula(formula_string: str, formula_name: str = "TICKET_FORMULA_STRING") -> Dict[str, Any]:
+    def update_formula(formula_string: str, formula_name: str = "TICKET_FORMULA_STRING", month: int = None) -> Dict[str, Any]:
         """Update the formula string
         
         Args:
             formula_string: The new formula string
             formula_name: The name of the formula to update (default: TICKET_FORMULA_STRING)
+            month: Month number (1-12). If provided, stores with month prefix.
         """
-        FormulaService._set_param(formula_name, formula_string, f"Formula: {formula_name}")
-        return FormulaService.get_formula()
+        FormulaService._set_param(formula_name, formula_string, month, f"Formula: {formula_name}")
+        return FormulaService.get_formula(month)
     
     @staticmethod
-    def update_params(params: Dict[str, str]) -> Dict[str, Any]:
-        """Update formula parameters"""
-        param_keys = FormulaDAO.get_param_keys()
-        for key, value in params.items():
-            if key in param_keys:
-                FormulaService._set_param(key, str(value))
+    def update_params(params: Dict[str, str], month: int = None) -> Dict[str, Any]:
+        """Update formula parameters
         
-        return FormulaService.get_formula()
+        Args:
+            params: Dict of param key -> value
+            month: Month number (1-12). If provided, stores with month prefix.
+        """
+        for key, value in params.items():
+            FormulaService._set_param(key, str(value), month)
+        
+        return FormulaService.get_formula(month)
     
     @staticmethod
-    def add_param(param_key: str, param_value: str, description: str = None, param_type: str = "param", required_params: List[str] = None) -> Dict[str, Any]:
+    def add_param(param_key: str, param_value: str, description: str = None, param_type: str = "param", required_params: List[str] = None, month: int = None) -> Dict[str, Any]:
         """Add a new formula parameter or formula
         
         Args:
@@ -243,15 +242,21 @@ class FormulaService:
             description: Optional description
             param_type: Type of item to add - "param" or "formula" (default: "param")
             required_params: List of parameter keys this formula requires (only for type="formula")
+            month: Month number (1-12). If provided, stores with month prefix.
         
         Returns:
             Dict with all formulas and params after adding
         """
-        return FormulaDAO.add_param(param_key, param_value, description, param_type, required_params)
+        return FormulaDAO.add_param(param_key, param_value, description, param_type, required_params, month)
     
     @staticmethod
-    def get_role_weights_and_standard(role: str) -> Tuple[float, float]:
-        """Get role weight and standard point for a given role"""
+    def get_role_weights_and_standard(role: str, month: int = None) -> Tuple[float, float]:
+        """Get role weight and standard point for a given role
+        
+        Args:
+            role: The role name (e.g., 'DEV', 'BA', 'QA')
+            month: Month number (1-12). If provided, gets params for that month.
+        """
         role = role.upper()
         
         role_weight_key = f"{role}_ROLE_WEIGHT"
@@ -261,8 +266,8 @@ class FormulaService:
         standard_role = "QA" if role in ("EQA", "IQA") else role
         standard_key = f"STANDARD_{standard_role}"
         
-        role_weight = FormulaService._get_param(role_weight_key)
-        standard = FormulaService._get_param(standard_key)
+        role_weight = FormulaService._get_param(role_weight_key, month)
+        standard = FormulaService._get_param(standard_key, month)
         
         # Default values if not set
         role_weight = float(role_weight) if role_weight else 1.0
@@ -275,6 +280,7 @@ class FormulaService:
         employee_id: str,
         month: int,
         formula_string: str = None,
+        param_month: int = None,
     ) -> Dict[str, Any]:
         """Calculate ticket point for a single employee
         
@@ -282,16 +288,20 @@ class FormulaService:
             employee_id: The employee UUID
             month: Month number (1-12)
             formula_string: Optional custom formula (defaults to stored formula)
+            param_month: Month for fetching parameters (defaults to month)
             
         Returns:
             Dict with ticket_point and breakdown
         """
+        if param_month is None:
+            param_month = month
+        
         # Get formula
         if not formula_string:
-            formula_string = FormulaService._get_param("TICKET_FORMULA_STRING") or FormulaService.DEFAULT_TICKET_FORMULA
+            formula_string = FormulaService._get_param("TICKET_FORMULA_STRING", param_month)
         
         # Get all parameters from database
-        all_params = FormulaDAO.get_all_params()
+        all_params = FormulaDAO.get_all_params(param_month)
         
         # Build static params context (except formula strings)
         static_context = {}
@@ -345,7 +355,7 @@ class FormulaService:
                         role_task_count += 1
             
             # Get role weight and standard
-            role_weight, standard = FormulaService.get_role_weights_and_standard(role_name)
+            role_weight, standard = FormulaService.get_role_weights_and_standard(role_name, param_month)
             
             # Build context for this role - start with static params
             context = static_context.copy()
@@ -391,6 +401,7 @@ class FormulaService:
         month: int,
         year: int = None,
         formula_string: str = None,
+        param_month: int = None,
     ) -> float:
         """Calculate logwork point for a single employee
         
@@ -399,19 +410,23 @@ class FormulaService:
             month: Month number (1-12)
             year: Year (optional, defaults to current year)
             formula_string: Optional custom formula (defaults to stored formula)
+            param_month: Month for fetching parameters (defaults to month)
             
         Returns:
             Logwork point value
         """
+        if param_month is None:
+            param_month = month
+        
         # Get formula
         if not formula_string:
-            formula_string = FormulaService._get_param("LOGWORK_FORMULA_STRING") or FormulaService.DEFAULT_LOGWORK_FORMULA
+            formula_string = FormulaService._get_param("LOGWORK_FORMULA_STRING", param_month)
         
         # Get LOG_HOURS dynamic variable
         log_hours = FormulaService._get_logwork_hours(employee_id, month, year)
         
         # Get all parameters from database
-        all_params = FormulaDAO.get_all_params()
+        all_params = FormulaDAO.get_all_params(param_month)
         
         # Build context
         context = {}
@@ -438,6 +453,7 @@ class FormulaService:
         ticket_point: float,
         logwork_point: float,
         formula_string: str = None,
+        param_month: int = None,
     ) -> float:
         """Calculate member contribution point
         
@@ -445,13 +461,14 @@ class FormulaService:
             ticket_point: Ticket point from TICKET_FORMULA_STRING
             logwork_point: Logwork point from LOGWORK_FORMULA_STRING
             formula_string: Optional custom formula (defaults to stored formula)
+            param_month: Month for fetching parameters (defaults to month)
             
         Returns:
             Member contribution point
         """
         # Get formula
         if not formula_string:
-            formula_string = FormulaService._get_param("MEMBER_CONTR_POINT_FORMULA_STRING") or FormulaService.DEFAULT_MEMBER_CONTR_FORMULA
+            formula_string = FormulaService._get_param("MEMBER_CONTR_POINT_FORMULA_STRING", param_month)
         
         # Build context with dynamic values
         context = {
@@ -473,6 +490,7 @@ class FormulaService:
         member_contr_point: float,
         total_team_points: float,
         formula_string: str = None,
+        param_month: int = None,
     ) -> float:
         """Calculate billable point
         
@@ -480,16 +498,17 @@ class FormulaService:
             member_contr_point: Member contribution point
             total_team_points: Total team contribution points
             formula_string: Optional custom formula (defaults to stored formula)
+            param_month: Month for fetching parameters (defaults to month)
             
         Returns:
             Billable point
         """
         # Get formula
         if not formula_string:
-            formula_string = FormulaService._get_param("BILLABLE_POINT_FORMULA_STRING") or FormulaService.DEFAULT_BILLABLE_FORMULA
+            formula_string = FormulaService._get_param("BILLABLE_POINT_FORMULA_STRING", param_month)
         
         # Get BILLABLE_PARAM from system params
-        billable_param = FormulaService._get_param("BILLABLE_PARAM")
+        billable_param = FormulaService._get_param("BILLABLE_PARAM", param_month)
         billable_param_value = float(billable_param) if billable_param else 0.0
         
         # Build context with dynamic values
@@ -515,6 +534,7 @@ class FormulaService:
         employee_id: str,
         month: int,
         year: int = None,
+        latest: bool = False,
     ) -> Dict[str, Any]:
         """Calculate all points for a single employee (ticket, logwork, member_contr, billable)
         
@@ -522,6 +542,7 @@ class FormulaService:
             employee_id: The employee UUID
             month: Month number (1-12)
             year: Year (optional, defaults to current year)
+            latest: If True, recalculate. If False, try to fetch from stored data.
             
         Returns:
             Dict with all point calculations
@@ -529,6 +550,16 @@ class FormulaService:
         # Default to current year if not provided
         if not year:
             year = datetime.now().year
+        
+        # Check if we should fetch from stored data
+        if not latest:
+            stored_data = FormulaDAO.get_calculated_data(month, year, latest=False)
+            if stored_data:
+                # Find this employee's data
+                for emp_data in stored_data:
+                    if emp_data.get("employee_id") == employee_id:
+                        return emp_data
+                # Employee not found in stored data, calculate fresh
         
         # 1. Calculate TICKET_POINT
         ticket_data = FormulaService.calculate_ticket_point(employee_id, month)
@@ -558,6 +589,7 @@ class FormulaService:
         month: int,
         year: int = None,
         employeeuuid: str = None,
+        latest: bool = False,
     ) -> List[Dict[str, Any]]:
         """Calculate all points for all employees (or filtered by employeeuuid)
         
@@ -565,6 +597,8 @@ class FormulaService:
             month: Month number (1-12)
             year: Year (optional, defaults to current year)
             employeeuuid: Filter by employee UUID (optional)
+            latest: If True, recalculate with that month's params.
+                   If False, fetch from stored calculated data in DB.
             
         Returns:
             List of employee results with all points
@@ -573,6 +607,16 @@ class FormulaService:
         if not year:
             year = datetime.now().year
         
+        # Try to fetch from stored data if latest=False
+        if not latest:
+            stored_data = FormulaDAO.get_calculated_data(month, year, latest=False)
+            if stored_data:
+                # Filter by employeeuuid if provided
+                if employeeuuid:
+                    return [emp for emp in stored_data if emp.get("employee_id") == employeeuuid]
+                return stored_data
+        
+        # Need to calculate fresh
         # Query employees
         if employeeuuid:
             employees = Employee.query.filter_by(id=employeeuuid).all()
@@ -597,7 +641,8 @@ class FormulaService:
             point_data = FormulaService.calculate_employee_all_points(
                 employee_id=str(employee.id),
                 month=month,
-                year=year
+                year=year,
+                latest=True  # Always calculate fresh for each employee
             )
             
             # Add employee info
@@ -619,6 +664,10 @@ class FormulaService:
         
         # Sort by ticket_point descending
         results.sort(key=lambda x: x["ticket_point"], reverse=True)
+        
+        # Save to DB if latest=True (recalculate)
+        if latest:
+            FormulaDAO.save_calculated_data(month, year, results)
         
         return results
     
