@@ -10,6 +10,8 @@ from app.models.ticket import Ticket
 from app.models.employee import Employee
 from app import db
 from app.utils.math_engine import MathEngine
+from app.dao.logwork_dao import LogworkDAO
+from app.dao.project_dao import ProjectDAO
 
 
 class FormulaService:
@@ -624,9 +626,8 @@ class FormulaService:
         logwork_point = FormulaService.calculate_logwork_point(employee_id, month, year)
         
         # 3. Calculate MEMBER_CONTR_POINT
-        member_contr_point = FormulaService.calculate_member_contr_point(ticket_point, logwork_point, month)
-        
-        # Return all points (billable will be calculated in calculate_all_employees after getting total team points)
+        member_contr_point = FormulaService.calculate_member_contr_point(ticket_point, logwork_point, month)        
+
         return {
             "employee_id": employee_id,
             "month": month,
@@ -717,6 +718,10 @@ class FormulaService:
             )
             result["total_team_points"] = total_team_points
             result["billable_point"] = billable_point
+
+            employee_id = result.get("employee_id")
+
+            result["member_performance"] = FormulaService.calculate_member_performance(employee_id, billable_point, month)
         
         # Sort by ticket_point descending
         results.sort(key=lambda x: x["ticket_point"], reverse=True)
@@ -727,6 +732,79 @@ class FormulaService:
         
         return results
     
+    @staticmethod
+    def calculate_total_ee(employee_id: str) -> int:
+        """Calculate total EE (Estimated Effort) for an employee across all projects
+        
+        Args:
+            employee_id: The employee UUID
+            
+        Returns:
+            Total allocation percent summed across all projects
+            Example: 50% in Project A + 40% in Project B = 90%
+        """
+        # Get all project memberships for this employee (across all projects)
+        memberships = ProjectDAO.get_all_memberships_by_user(employee_id)
+        
+        # Calculate total EE (sum of allocation_percent across all projects)
+        total_ee = sum(membership.allocation_percent for membership in memberships)
+        
+        return total_ee
+    
+    # Calculate member performance level based on billable point and predefined thresholds (optional enhancement)
+    @staticmethod
+    def calculate_member_performance(employee_id: str, billable_point: float, month: int) -> Dict[str, Any]:
+        """Calculate member performance level based on billable point and thresholds
+        
+        Args:
+            employee_id: The employee UUID
+            billable_point: The calculated billable point for the employee
+            month: Month number (1-12) to get thresholds for
+            
+        Returns:
+            Dict with performance level and total_ee
+        """
+        # Get number of employees with logwork in that month (convert month to 2-digit string)
+        month_str = str(month).zfill(2)
+        member_count = LogworkDAO.get_by_month(month_str).__len__()
+        
+        # Get billable param for the month
+        billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
+        print(f"Calculating performance for employee {employee_id} in month {month_str}: billable_point={billable_point}, member_count={member_count}, billable_param={billable_param}")
+        billable_param_value = float(billable_param) if billable_param else 0.0
+        
+        # Calculate performance point: billable_point / (billable_param/member_count)
+        if member_count > 0 and billable_param_value > 0:
+            performance_point = billable_point / (billable_param_value / member_count)
+        else:
+            performance_point = 0.0
+        
+        # Calculate total EE using the dedicated function
+        total_ee = FormulaService.calculate_total_ee(employee_id)
+        
+        print(f"Employee {employee_id}: performance_point={performance_point}, total_ee={total_ee}%, member_count={member_count}")
+
+        # Calculate final result: performance_point / total_ee
+        if total_ee > 0:
+            result = 100 * performance_point / total_ee
+        else:
+            # If no allocation, default to "Bad"
+            result = 0.0
+        
+        # Determine performance level based on result
+        if result >= 2:
+            performance_level = "Excellent"
+        elif result > 1:
+            performance_level = "Good"
+        else:
+            performance_level = "Bad"
+        
+        print(f"Employee {employee_id}: final performance result={result}, level={performance_level}")
+        return {
+            "performance_level": performance_level,
+            "total_ee": total_ee
+        }
+
     # Keep legacy method for backward compatibility
     @staticmethod
     def calculate_employee_point(
@@ -745,41 +823,3 @@ class FormulaService:
             Dict with point calculation
         """
         return FormulaService.calculate_ticket_point(employee_id, month, formula_string)
-    
-    # Keep legacy method for backward compatibility
-    @staticmethod
-    def calculate_all_employees_legacy(
-        month: int,
-        formula_string: str = None
-    ) -> List[Dict[str, Any]]:
-        """Calculate points for all employees (legacy method)"""
-        employees = Employee.query.all()
-        
-        results = []
-        for employee in employees:
-            employee_data = {
-                "id": str(employee.id),
-                "employee_id": employee.employeeId,
-                "en_full_name": employee.en_full_name,
-                "vn_full_name": employee.vn_full_name,
-                "email": employee.email,
-            }
-            
-            point_data = FormulaService.calculate_ticket_point(
-                employee_id=str(employee.id),
-                month=month,
-                formula_string=formula_string
-            )
-            
-            results.append({
-                "employee": employee_data,
-                "task_count": point_data["task_count"],
-                "bug_count": point_data["bug_count"],
-                "point": point_data["ticket_point"],
-                "breakdown": point_data["breakdown"]
-            })
-        
-        results.sort(key=lambda x: x["point"], reverse=True)
-        
-        return results
-

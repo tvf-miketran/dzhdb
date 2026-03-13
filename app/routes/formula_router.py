@@ -6,6 +6,7 @@ from app.services.formula_service import FormulaService
 from app.responses import ApiResponse
 from app.utils.decorators import admin_required
 from app.dao.employee_dao import EmployeeDAO
+from app.utils.query_helpers import parse_int_list_param
 
 formula_bp = Blueprint("formula", __name__)
 
@@ -286,7 +287,7 @@ def calculate_points_get():
     """Calculate all points for all employees (GET)
     
     Query parameters:
-    - month: Month number (1-12) - required
+    - month: Month number(s) (1-12) - required, supports single or comma-separated (e.g. month=2,3,4)
     - year: Year (optional, defaults to current year)
     - employeeuuid: Filter by employee UUID (optional)
     - latest: If true, recalculate. If false (default), fetch from stored data.
@@ -322,98 +323,39 @@ def calculate_points_get():
         "message": "Points calculated successfully"
     }
     """
-    # Get query parameters
-    month = request.args.get("month", type=int)
+    # Get query parameters - month supports single or comma-separated list (e.g. month=2,3,4)
+    months = parse_int_list_param(request.args.get("month"))
     year = request.args.get("year", type=int)
     employeeuuid = request.args.get("employeeuuid")
     latest = request.args.get("latest", type=lambda x: x.lower() == "true", default=False)
     
     # Validate required params
-    if not month:
+    if not months:
         return jsonify({
             "success": False,
             "message": "month is required",
             "errors": None
         }), 400
     
-    if month < 1 or month > 12:
+    if any(m < 1 or m > 12 for m in months):
         return jsonify({
             "success": False,
             "message": "month must be between 1 and 12",
             "errors": None
         }), 400
     
-    # Calculate points
-    results = FormulaService.calculate_all_employees(
-        month=month,
-        year=year,
-        employeeuuid=employeeuuid,
-        latest=latest
-    )
+    # Calculate points for each month and combine results
+    all_results = []
+    for month in months:
+        results = FormulaService.calculate_all_employees(
+            month=month,
+            year=year,
+            employeeuuid=employeeuuid,
+            latest=latest
+        )
+        all_results.extend(results)
     
-    return ApiResponse.success(data=results, message="Points calculated successfully")
-
-
-@formula_bp.route("/calculate", methods=["POST"])
-@jwt_required()
-@admin_required
-def calculate_points_post():
-    """Calculate all points for all employees (POST)
-    
-    Request body:
-    {
-        "month": 1,
-        "year": 2026,  // optional, defaults to current year
-        "employeeuuid": "uuid",  // optional, filter by employee
-        "latest": true  // optional, defaults to false - if true, recalculate
-    }
-    
-    Returns:
-    {
-        "success": true,
-        "data": [...],
-        "message": "Points calculated successfully"
-    }
-    """
-    data = request.get_json()
-    
-    if not data:
-        return jsonify({
-            "success": False,
-            "message": "Request body is required",
-            "errors": None
-        }), 400
-    
-    month = data.get("month")
-    year = data.get("year")
-    employeeuuid = data.get("employeeuuid")
-    latest = data.get("latest", False)
-    
-    # Validate required params
-    if not month:
-        return jsonify({
-            "success": False,
-            "message": "month is required",
-            "errors": None
-        }), 400
-    
-    if month < 1 or month > 12:
-        return jsonify({
-            "success": False,
-            "message": "month must be between 1 and 12",
-            "errors": None
-        }), 400
-    
-    # Calculate points
-    results = FormulaService.calculate_all_employees(
-        month=month,
-        year=year,
-        employeeuuid=employeeuuid,
-        latest=latest
-    )
-    
-    return ApiResponse.success(data=results, message="Points calculated successfully")
-
+    return ApiResponse.success(data=all_results, message="Points calculated successfully")
 
 @formula_bp.route("/calculate/<string:employee_id>", methods=["GET"])
 @jwt_required()
@@ -476,25 +418,34 @@ def calculate_employee_point(employee_id: str):
         year = datetime.now().year
     
     # Calculate all points for the employee
-    result = FormulaService.calculate_employee_all_points(
-        employee_id=employee_id,
+    # result = FormulaService.calculate_employee_all_points(
+    #     employee_id=employee_id,
+    #     month=month,
+    #     year=year,
+    #     latest=latest
+    # )
+
+    result = FormulaService.calculate_all_employees(
         month=month,
         year=year,
+        employeeuuid=employee.id,
         latest=latest
     )
+
+    print(f"Calculated points for employee {employee_id} in month {month}/{year}: {result}")
     
     # Also calculate total team points and billable for single employee
     # Need to get all employees to calculate total team points
-    all_results = FormulaService.calculate_all_employees(
-        month=month,
-        year=year,
-        employeeuuid=employee_id,
-        latest=latest
-    )
+    # all_results = FormulaService.calculate_all_employees(
+    #     month=month,
+    #     year=year,
+    #     employeeuuid=employee_id,
+    #     latest=latest
+    # )
     
-    if all_results:
-        result["total_team_points"] = all_results[0].get("total_team_points", 0)
-        result["billable_point"] = all_results[0].get("billable_point", 0)
+    # if all_results:
+    #     result["total_team_points"] = all_results[0].get("total_team_points", 0)
+    #     result["billable_point"] = all_results[0].get("billable_point", 0)
     
     return ApiResponse.success(data=result, message="Point calculated successfully")
 

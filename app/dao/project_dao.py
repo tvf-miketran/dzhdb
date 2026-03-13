@@ -86,6 +86,11 @@ class ProjectDAO:
             user_id=user_id
         ).first()
     
+    @staticmethod
+    def get_all_memberships_by_user(user_id: str) -> List[ProjectMember]:
+        """Get all project memberships for a user (across all projects)"""
+        return ProjectMember.query.filter_by(user_id=user_id).all()
+    
 
     # ---------- CREATE ----------
     @staticmethod
