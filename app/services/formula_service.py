@@ -747,7 +747,7 @@ class FormulaService:
         
         # Need to calculate fresh
         # Always compute with full team context so billable distribution is consistent.
-        employees = Employee.query.all()
+        employees = EmployeeDAO.get_all()
         
         results = []
         total_team_points = 0.0

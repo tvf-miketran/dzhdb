@@ -1,4 +1,4 @@
-from typing import Optional, List, Any, Union
+from typing import Optional, List, Any
 
 
 def parse_list_param(value: Any) -> Optional[List[str]]:

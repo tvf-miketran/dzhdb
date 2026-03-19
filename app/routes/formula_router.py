@@ -7,20 +7,9 @@ from app.responses import ApiResponse
 from app.utils.decorators import admin_required
 from app.dao.employee_dao import EmployeeDAO
 from app.utils.query_helpers import parse_int_list_param
+from app.utils.round_float import _round_floats
 
 formula_bp = Blueprint("formula", __name__)
-
-
-def _round_floats(value, ndigits: int = 2):
-    """Recursively round float values for API responses."""
-    if isinstance(value, float):
-        return round(value, ndigits)
-    if isinstance(value, list):
-        return [_round_floats(item, ndigits) for item in value]
-    if isinstance(value, dict):
-        return {key: _round_floats(val, ndigits) for key, val in value.items()}
-    return value
-
 
 @formula_bp.route("", methods=["GET"])
 @jwt_required()
