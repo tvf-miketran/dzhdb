@@ -335,7 +335,7 @@ def calculate_points_get():
     months = parse_int_list_param(request.args.get("month"))
     year = request.args.get("year", type=int)
     employeeuuid = request.args.get("employeeuuid")
-    latest = request.args.get("latest", type=lambda x: x.lower() == "true", default=False)
+    latest = request.args.get("latest", type=lambda x: x.lower() == "true", default=True)
 
     # Default month filter to current month when not provided
     if not months:
