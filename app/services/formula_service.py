@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Set
 from datetime import datetime
 from app.dao.ticket_dao import TicketDAO
 from app.dao.employee_dao import EmployeeDAO
@@ -536,6 +536,7 @@ class FormulaService:
         total_team_points: float,
         month: int,
         formula_string: str = None,
+        billable_param_override: float = None,
     ) -> float:
         """Calculate billable point
         
@@ -544,6 +545,7 @@ class FormulaService:
             total_team_points: Total team contribution points
             month: Month number (1-12)
             formula_string: Optional custom formula (defaults to stored formula)
+            billable_param_override: Optional BILLABLE_PARAM override value
             
         Returns:
             Billable point
@@ -558,8 +560,11 @@ class FormulaService:
             return 0.0
         
         # Get BILLABLE_PARAM from system params
-        billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
-        billable_param_value = float(billable_param) if billable_param else 0.0
+        if billable_param_override is not None:
+            billable_param_value = float(billable_param_override)
+        else:
+            billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
+            billable_param_value = float(billable_param) if billable_param else 0.0
         
         # Build context with dynamic values
         context = {
@@ -639,6 +644,59 @@ class FormulaService:
             "member_contr_point": member_contr_point,
             "ticket_breakdown": ticket_data.get("breakdown", []),
         }
+
+    @staticmethod
+    def _get_logwork_user_ids_by_month(month_str: str) -> Set[str]:
+        """Get user IDs that have logwork records in a specific month."""
+        logwork_records = LogworkDAO.get_by_month(month_str)
+        print(f"Calculating billable metrics for month {month_str}: found {len(logwork_records)} logwork records")
+        return {str(log.user_id) for log in logwork_records}
+
+    @staticmethod
+    def _calculate_billable_metrics(
+        data: List[Dict[str, Any]],
+        month_str: str
+    ) -> Tuple[float, float]:
+        """Calculate (average_billable_point, total_billable_point) for employees with logwork in month."""
+        logwork_user_ids = FormulaService._get_logwork_user_ids_by_month(month_str)
+
+        if not logwork_user_ids:
+            return 0.0, 0.0
+
+        filtered_billable_values = [
+            emp.get("billable_point", 0.0)
+            for emp in data
+            if str(emp.get("employee_id")) in logwork_user_ids
+        ]
+
+        if not filtered_billable_values:
+            return 0.0, 0.0
+
+        total_billable_point = sum(filtered_billable_values)
+        average_billable_point = total_billable_point / len(filtered_billable_values)
+
+        return average_billable_point, total_billable_point
+
+    @staticmethod
+    def _calculate_total_ticket_point(data: List[Dict[str, Any]]) -> float:
+        """Sum ticket_point for all members in current filtered dataset."""
+        return sum(emp.get("ticket_point", 0.0) for emp in data)
+
+    @staticmethod
+    def _calculate_total_logwork_point(data: List[Dict[str, Any]]) -> float:
+        """Sum logwork_point for all members in current filtered dataset."""
+        return sum(emp.get("logwork_point", 0.0) for emp in data)
+
+    @staticmethod
+    def filter_months_with_logwork(employee_id: str, months: List[int], year: int) -> List[int]:
+        """Keep only months where the employee has logwork records for the given year."""
+        months_with_logwork = []
+        for m in months:
+            month_str = str(m).zfill(2)
+            logwork = LogworkDAO.get_by_user_id_month_year(str(employee_id), month_str, str(year))
+            if logwork:
+                months_with_logwork.append(m)
+        return months_with_logwork
     
     @staticmethod
     def calculate_all_employees(
@@ -646,7 +704,7 @@ class FormulaService:
         year: int = None,
         employeeuuid: str = None,
         latest: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], float, float, float, float]:
         """Calculate all points for all employees (or filtered by employeeuuid)
         
         Args:
@@ -657,8 +715,15 @@ class FormulaService:
                    If False, fetch from stored calculated data in DB.
             
         Returns:
-            List of employee results with all points
+            Tuple of:
+            - List of employee results with all points
+            - average_billable_point (only employees who have logwork in the month)
+            - total_billable_point (sum of billable_point for employees who have logwork in the month)
+            - total_ticket_point (sum of ticket_point based on month filter)
+            - total_logwork_point (sum of logwork_point based on month filter)
         """
+        month_str = str(month).zfill(2)
+
         # Default to current year if not provided
         if not year:
             year = datetime.now().year
@@ -669,15 +734,20 @@ class FormulaService:
             if stored_data:
                 # Filter by employeeuuid if provided
                 if employeeuuid:
-                    return [emp for emp in stored_data if emp.get("employee_id") == employeeuuid]
-                return stored_data
+                    employeeuuid_str = str(employeeuuid)
+                    filtered_data = [emp for emp in stored_data if str(emp.get("employee_id")) == employeeuuid_str]
+                    average_billable_point, total_billable_point = FormulaService._calculate_billable_metrics(filtered_data, month_str)
+                    total_ticket_point = FormulaService._calculate_total_ticket_point(filtered_data)
+                    total_logwork_point = FormulaService._calculate_total_logwork_point(filtered_data)
+                    return filtered_data, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point
+                average_billable_point, total_billable_point = FormulaService._calculate_billable_metrics(stored_data, month_str)
+                total_ticket_point = FormulaService._calculate_total_ticket_point(stored_data)
+                total_logwork_point = FormulaService._calculate_total_logwork_point(stored_data)
+                return stored_data, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point
         
         # Need to calculate fresh
-        # Query employees
-        if employeeuuid:
-            employees = Employee.query.filter_by(id=employeeuuid).all()
-        else:
-            employees = Employee.query.all()
+        # Always compute with full team context so billable distribution is consistent.
+        employees = Employee.query.all()
         
         results = []
         total_team_points = 0.0
@@ -708,20 +778,45 @@ class FormulaService:
             total_team_points += point_data["member_contr_point"]
             
             results.append(point_data)
+
+        # Split BILLABLE_PARAM: 90% for shared formula, 10% evenly for ADMIN users.
+        billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
+        billable_param_value = float(billable_param) if billable_param else 0.0
+        common_billable_param = billable_param_value * 0.9
+        admin_bonus_pool = billable_param_value * 0.1
+
+        admin_employee_ids = {
+            str(emp.id)
+            for emp in employees
+            if (getattr(emp, "authorize_role", "") or "").upper() == "ADMIN"
+        }
+        admin_bonus_per_employee = (
+            admin_bonus_pool / len(admin_employee_ids)
+            if admin_employee_ids else 0.0
+        )
         
         # Second pass: calculate billable point for each employee
         for result in results:
             billable_point = FormulaService.calculate_billable_point(
                 member_contr_point=result["member_contr_point"],
                 total_team_points=total_team_points,
-                month=month
+                month=month,
+                billable_param_override=common_billable_param,
             )
+
+            if str(result.get("employee_id")) in admin_employee_ids:
+                billable_point += admin_bonus_per_employee
+
             result["total_team_points"] = total_team_points
             result["billable_point"] = billable_point
 
             employee_id = result.get("employee_id")
 
             result["member_performance"] = FormulaService.calculate_member_performance(employee_id, billable_point, month)
+
+        if employeeuuid:
+            employeeuuid_str = str(employeeuuid)
+            results = [emp for emp in results if str(emp.get("employee_id")) == employeeuuid_str]
         
         # Sort by ticket_point descending
         results.sort(key=lambda x: x["ticket_point"], reverse=True)
@@ -730,7 +825,11 @@ class FormulaService:
         if latest:
             FormulaDAO.save_calculated_data(month, year, results)
         
-        return results
+        average_billable_point, total_billable_point = FormulaService._calculate_billable_metrics(results, month_str)
+        total_ticket_point = FormulaService._calculate_total_ticket_point(results)
+        total_logwork_point = FormulaService._calculate_total_logwork_point(results)
+
+        return results, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point
     
     @staticmethod
     def calculate_total_ee(employee_id: str) -> int:
