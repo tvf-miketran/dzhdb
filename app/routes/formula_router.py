@@ -7,9 +7,9 @@ from app.responses import ApiResponse
 from app.utils.decorators import admin_required
 from app.dao.employee_dao import EmployeeDAO
 from app.utils.query_helpers import parse_int_list_param
+from app.utils.round_float import _round_floats
 
 formula_bp = Blueprint("formula", __name__)
-
 
 @formula_bp.route("", methods=["GET"])
 @jwt_required()
@@ -80,6 +80,7 @@ def get_formula():
         }), 400
     
     data = FormulaService.get_formula(month)
+    data = _round_floats(data)
     return ApiResponse.success(data=data, message="Formulas retrieved successfully")
 
 
@@ -132,6 +133,7 @@ def update_formula():
         }), 400
     
     result = FormulaService.update_formula(formula_string, formula_name, month)
+    result = _round_floats(result)
     
     return ApiResponse.success(data=result, message="Formula updated successfully")
 
@@ -185,6 +187,7 @@ def update_params():
         }), 400
     
     result = FormulaService.update_params(data, month)
+    result = _round_floats(result)
     
     return ApiResponse.success(data=result, message="Parameters updated successfully")
 
@@ -276,6 +279,7 @@ def add_param():
             }), 400
     
     result = FormulaService.add_params(params, month)
+    result = _round_floats(result)
     
     return ApiResponse.success(data=result, message="Parameters added successfully")
 
@@ -295,31 +299,35 @@ def calculate_points_get():
     Returns:
     {
         "success": true,
-        "data": [
-            {
-                "employee": {
-                    "id": "uuid",
-                    "employeeId": "EMP001",
-                    "en_full_name": "John Doe",
-                    "vn_full_name": "Nguyen Van A",
-                    "email": "john@company.com"
+        "data": {
+            "results": [
+                {
+                    "employee": {
+                        "id": "uuid",
+                        "employeeId": "EMP001",
+                        "en_full_name": "John Doe",
+                        "vn_full_name": "Nguyen Van A",
+                        "email": "john@company.com"
+                    },
+                    "month": 1,
+                    "year": 2026,
+                    "task_count": 5,
+                    "bug_count": 3,
+                    "ticket_point": 11.5,
+                    "logwork_point": 8.0,
+                    "member_contr_point": 19.5,
+                    "total_team_points": 100.0,
+                    "billable_point": 195.0,
+                    "ticket_breakdown": [
+                        {"role": "DEV", "value": 0.11},
+                        {"role": "BA", "value": 0.11}
+                    ]
                 },
-                "month": 1,
-                "year": 2026,
-                "task_count": 5,
-                "bug_count": 3,
-                "ticket_point": 11.5,
-                "logwork_point": 8.0,
-                "member_contr_point": 19.5,
-                "total_team_points": 100.0,
-                "billable_point": 195.0,
-                "ticket_breakdown": [
-                    {"role": "DEV", "value": 0.11},
-                    {"role": "BA", "value": 0.11}
-                ]
-            },
-            ...
-        ],
+                ...
+            ],
+            "average_billable_point": 123.45,
+            "total_billable_point": 987.65
+        },
         "message": "Points calculated successfully"
     }
     """
@@ -328,14 +336,10 @@ def calculate_points_get():
     year = request.args.get("year", type=int)
     employeeuuid = request.args.get("employeeuuid")
     latest = request.args.get("latest", type=lambda x: x.lower() == "true", default=False)
-    
-    # Validate required params
+
+    # Default month filter to current month when not provided
     if not months:
-        return jsonify({
-            "success": False,
-            "message": "month is required",
-            "errors": None
-        }), 400
+        months = [datetime.now().month]
     
     if any(m < 1 or m > 12 for m in months):
         return jsonify({
@@ -346,16 +350,82 @@ def calculate_points_get():
     
     # Calculate points for each month and combine results
     all_results = []
+    monthly_average_billable_points = []
+    monthly_total_billable_points = []
+    total_ticket_point = 0.0
+    total_logwork_point = 0.0
     for month in months:
-        results = FormulaService.calculate_all_employees(
+        results, average_billable_point, total_billable_point, monthly_ticket_point, monthly_logwork_point = FormulaService.calculate_all_employees(
             month=month,
             year=year,
             employeeuuid=employeeuuid,
             latest=latest
         )
         all_results.extend(results)
+        monthly_average_billable_points.append(average_billable_point)
+        monthly_total_billable_points.append(total_billable_point)
+        total_ticket_point += monthly_ticket_point
+        total_logwork_point += monthly_logwork_point
+
+    average_billable_point = (
+        sum(monthly_average_billable_points) / len(monthly_average_billable_points)
+        if monthly_average_billable_points else 0.0
+    )
+
+    total_billable_point = sum(monthly_total_billable_points) if monthly_total_billable_points else 0.0
     
-    return ApiResponse.success(data=all_results, message="Points calculated successfully")
+    # If multiple months, aggregate results per employee (1 record per employee)
+    if len(months) > 1:
+        employee_map = {}
+        for record in all_results:
+            emp_id = record["employee_id"]
+            if emp_id not in employee_map:
+                employee_map[emp_id] = {
+                    "employee_id": emp_id,
+                    "employee": record.get("employee"),
+                    "year": record.get("year"),
+                    "months": [],
+                    "task_count": 0,
+                    "bug_count": 0,
+                    "ticket_point": 0.0,
+                    "logwork_point": 0.0,
+                    "member_contr_point": 0.0,
+                    "billable_point": 0.0,
+                    "total_team_points": 0.0,
+                    "ticket_breakdown": [],
+                    "member_performance": None,
+                }
+            entry = employee_map[emp_id]
+            entry["months"].append(record.get("month"))
+            entry["task_count"] += record.get("task_count", 0)
+            entry["bug_count"] += record.get("bug_count", 0)
+            entry["ticket_point"] += record.get("ticket_point", 0.0)
+            entry["logwork_point"] += record.get("logwork_point", 0.0)
+            entry["member_contr_point"] += record.get("member_contr_point", 0.0)
+            entry["billable_point"] += record.get("billable_point", 0.0)
+            entry["total_team_points"] += record.get("total_team_points", 0.0)
+            entry["ticket_breakdown"].extend(record.get("ticket_breakdown", []))
+            # Keep member_performance from last month record
+            if record.get("member_performance"):
+                entry["member_performance"] = record.get("member_performance")
+
+        all_results = list(employee_map.values())
+
+    # Sort results by employee English name (A-Z)
+    all_results.sort(
+        key=lambda x: (x.get("employee") or {}).get("en_full_name", "").lower()
+    )
+
+    return ApiResponse.success(
+        data=_round_floats({
+            "results": all_results,
+            "average_billable_point": average_billable_point,
+            "total_billable_point": total_billable_point,
+            "total_ticket_point": total_ticket_point,
+            "total_logwork_point": total_logwork_point
+        }),
+        message="Points calculated successfully"
+    )
 
 @formula_bp.route("/calculate/<string:employee_id>", methods=["GET"])
 @jwt_required()
@@ -363,7 +433,7 @@ def calculate_employee_point(employee_id: str):
     """Calculate all points for a single employee
     
     Query parameters:
-    - month: Month number (1-12) - required
+    - month: Month number(s) (1-12) - optional, supports single or comma-separated (e.g. month=1,2,3)
     - year: Year (optional, defaults to current year)
     - latest: If true, recalculate. If false (default), fetch from stored data.
     
@@ -386,18 +456,19 @@ def calculate_employee_point(employee_id: str):
         "message": "Point calculated successfully"
     }
     """
-    month = request.args.get("month", type=int)
+    months = parse_int_list_param(request.args.get("month"))
     year = request.args.get("year", type=int)
-    latest = request.args.get("latest", type=lambda x: x.lower() == "true", default=False)
-    
-    if not month:
-        return jsonify({
-            "success": False,
-            "message": "month is required",
-            "errors": None
-        }), 400
-    
-    if month < 1 or month > 12:
+    latest_raw = request.args.get("latest")
+    if latest_raw is None or latest_raw == "":
+        latest = True
+    else:
+        latest = latest_raw.lower() == "true"
+
+    # Default month filter to current month when not provided
+    if not months:
+        months = [datetime.now().month]
+
+    if any(m < 1 or m > 12 for m in months):
         return jsonify({
             "success": False,
             "message": "month must be between 1 and 12",
@@ -416,6 +487,21 @@ def calculate_employee_point(employee_id: str):
     # Get current year if not provided
     if not year:
         year = datetime.now().year
+
+    # For single-employee endpoint, only keep months where employee has logwork
+    months = FormulaService.filter_months_with_logwork(str(employee.id), months, year)
+
+    if not months:
+        return ApiResponse.success(
+            data=_round_floats({
+                "results": [],
+                "average_billable_point": 0.0,
+                "total_billable_point": 0.0,
+                "total_ticket_point": 0.0,
+                "total_logwork_point": 0.0
+            }),
+            message="No logwork data found for selected month(s)"
+        )
     
     # Calculate all points for the employee
     # result = FormulaService.calculate_employee_all_points(
@@ -425,14 +511,65 @@ def calculate_employee_point(employee_id: str):
     #     latest=latest
     # )
 
-    result = FormulaService.calculate_all_employees(
-        month=month,
-        year=year,
-        employeeuuid=employee.id,
-        latest=latest
+    all_results = []
+    monthly_average_billable_points = []
+    total_billable_point = 0.0
+    total_ticket_point = 0.0
+    total_logwork_point = 0.0
+
+    for month in months:
+        result, average_billable_point, monthly_total_billable_point, monthly_total_ticket_point, monthly_total_logwork_point = FormulaService.calculate_all_employees(
+            month=month,
+            year=year,
+            employeeuuid=str(employee.id),
+            latest=latest
+        )
+        all_results.extend(result)
+        monthly_average_billable_points.append(average_billable_point)
+        total_billable_point += monthly_total_billable_point
+        total_ticket_point += monthly_total_ticket_point
+        total_logwork_point += monthly_total_logwork_point
+
+    average_billable_point = (
+        sum(monthly_average_billable_points) / len(monthly_average_billable_points)
+        if monthly_average_billable_points else 0.0
     )
 
-    print(f"Calculated points for employee {employee_id} in month {month}/{year}: {result}")
+    # If multiple months are selected, aggregate into one combined employee record
+    if len(months) > 1 and all_results:
+        combined = {
+            "employee_id": all_results[0].get("employee_id"),
+            "employee": all_results[0].get("employee"),
+            "year": all_results[0].get("year"),
+            "months": sorted({r.get("month") for r in all_results if r.get("month") is not None}),
+            "task_count": 0,
+            "bug_count": 0,
+            "ticket_point": 0.0,
+            "logwork_point": 0.0,
+            "member_contr_point": 0.0,
+            "billable_point": 0.0,
+            "total_team_points": 0.0,
+            "ticket_breakdown": [],
+            "member_performance": None,
+        }
+
+        for record in all_results:
+            combined["task_count"] += record.get("task_count", 0)
+            combined["bug_count"] += record.get("bug_count", 0)
+            combined["ticket_point"] += record.get("ticket_point", 0.0)
+            combined["logwork_point"] += record.get("logwork_point", 0.0)
+            combined["member_contr_point"] += record.get("member_contr_point", 0.0)
+            combined["billable_point"] += record.get("billable_point", 0.0)
+            combined["total_team_points"] += record.get("total_team_points", 0.0)
+            combined["ticket_breakdown"].extend(record.get("ticket_breakdown", []))
+            if record.get("member_performance"):
+                combined["member_performance"] = record.get("member_performance")
+
+        all_results = [combined]
+    else:
+        all_results.sort(key=lambda x: x.get("month", 0))
+
+    print(f"Calculated points for employee {employee_id} in months {months}/{year}: {all_results}")
     
     # Also calculate total team points and billable for single employee
     # Need to get all employees to calculate total team points
@@ -447,5 +584,14 @@ def calculate_employee_point(employee_id: str):
     #     result["total_team_points"] = all_results[0].get("total_team_points", 0)
     #     result["billable_point"] = all_results[0].get("billable_point", 0)
     
-    return ApiResponse.success(data=result, message="Point calculated successfully")
+    return ApiResponse.success(
+        data=_round_floats({
+            "results": all_results,
+            "average_billable_point": average_billable_point,
+            "total_billable_point": total_billable_point,
+            "total_ticket_point": total_ticket_point,
+            "total_logwork_point": total_logwork_point
+        }),
+        message="Point calculated successfully"
+    )
 
