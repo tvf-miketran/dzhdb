@@ -33,7 +33,12 @@ class EmployeeDAO:
     
     @staticmethod
     def get_all() -> List[Employee]:
-        return Employee.query.options(*_with_projects()).all()
+        return (
+            Employee.query
+            .options(*_with_projects())
+            .filter(Employee.authorize_role != "ADMIN")
+            .all()
+        )
     
     @staticmethod
     def get_all_filtered_sorted(

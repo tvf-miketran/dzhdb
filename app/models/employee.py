@@ -34,6 +34,7 @@ class Employee(db.Model):
         db.Enum(
             "MEMBER",
             "ADMIN",
+            "MANAGER",
             name="employee_role"
         ),
         nullable=False,

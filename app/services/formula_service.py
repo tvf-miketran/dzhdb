@@ -779,20 +779,20 @@ class FormulaService:
             
             results.append(point_data)
 
-        # Split BILLABLE_PARAM: 90% for shared formula, 10% evenly for ADMIN users.
+        # Split BILLABLE_PARAM: 90% for shared formula, 10% evenly for manager users.
         billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
         billable_param_value = float(billable_param) if billable_param else 0.0
         common_billable_param = billable_param_value * 0.9
-        admin_bonus_pool = billable_param_value * 0.1
+        manager_bonus_pool = billable_param_value * 0.1
 
-        admin_employee_ids = {
+        manager_employee_ids = {
             str(emp.id)
             for emp in employees
-            if (getattr(emp, "authorize_role", "") or "").upper() == "ADMIN"
+            if (getattr(emp, "authorize_role", "") or "").upper() == "MANAGER"
         }
-        admin_bonus_per_employee = (
-            admin_bonus_pool / len(admin_employee_ids)
-            if admin_employee_ids else 0.0
+        manager_bonus_per_employee = (
+            manager_bonus_pool / len(manager_employee_ids)
+            if manager_employee_ids else 0.0
         )
         
         # Second pass: calculate billable point for each employee
@@ -804,8 +804,8 @@ class FormulaService:
                 billable_param_override=common_billable_param,
             )
 
-            if str(result.get("employee_id")) in admin_employee_ids:
-                billable_point += admin_bonus_per_employee
+            if str(result.get("employee_id")) in manager_employee_ids:
+                billable_point += manager_bonus_per_employee
 
             result["total_team_points"] = total_team_points
             result["billable_point"] = billable_point
