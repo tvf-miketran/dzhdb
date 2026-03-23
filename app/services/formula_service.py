@@ -7,7 +7,6 @@ from app.dao.ticket_type_dao import TicketTypeDAO
 from app.dao.ticket_status_dao import TicketStatusDAO
 from app.models.systemparam import SystemParameter
 from app.models.ticket import Ticket
-from app.models.employee import Employee
 from app import db
 from app.utils.math_engine import MathEngine
 from app.dao.logwork_dao import LogworkDAO
@@ -168,6 +167,45 @@ class FormulaService:
     def _get_param(param_key: str, month: int = None) -> Optional[str]:
         """Get system parameter value by key"""
         return FormulaDAO.get_param(param_key, month)
+
+    @staticmethod
+    def get_logwork_standard_total(months: List[int]) -> float:
+        """Get total STANDARD_LOGWORK from month-prefixed system params."""
+        total = 0.0
+        for month in months:
+            value = FormulaService._get_param("STANDARD_LOGWORK", month)
+            try:
+                total += float(value) if value is not None else 0.0
+            except (TypeError, ValueError):
+                total += 0.0
+        return total
+
+    @staticmethod
+    def get_active_employee_count() -> int:
+        """Count active employees (status=True) excluding ADMIN role."""
+        return EmployeeDAO.count_active_non_admin()
+
+    @staticmethod
+    def get_billable_standard_total(months: List[int]) -> float:
+        """Get total billable standard across months.
+
+        billable_standard(month) = BILLABLE_PARAM(month) / active_employee_count
+        """
+        active_employee_count = FormulaService.get_active_employee_count()
+        if active_employee_count <= 0:
+            return 0.0
+
+        total = 0.0
+        for month in months:
+            billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
+            try:
+                monthly_billable_param = float(billable_param) if billable_param is not None else 0.0
+            except (TypeError, ValueError):
+                monthly_billable_param = 0.0
+
+            total += monthly_billable_param / active_employee_count
+
+        return total
     
     @staticmethod
     def _set_param(param_key: str, param_value: str, month: int = None, description: str = None) -> SystemParameter:

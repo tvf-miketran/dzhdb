@@ -39,6 +39,16 @@ class EmployeeDAO:
             .filter(Employee.authorize_role != "ADMIN")
             .all()
         )
+
+    @staticmethod
+    def count_active_non_admin() -> int:
+        """Count active employees excluding ADMIN role."""
+        return (
+            Employee.query
+            .filter(Employee.status.is_(True))
+            .filter(Employee.authorize_role != "ADMIN")
+            .count()
+        )
     
     @staticmethod
     def get_all_filtered_sorted(
@@ -50,7 +60,11 @@ class EmployeeDAO:
         sort_order: str = "desc"
     ):
         """Get filtered and sorted employees with pagination"""
-        query = Employee.query.options(*_with_projects())
+        query = (
+            Employee.query
+            .options(*_with_projects())
+            .filter(Employee.authorize_role != "ADMIN")
+        )
 
         if status is not None:
             query = query.filter(Employee.status == status)

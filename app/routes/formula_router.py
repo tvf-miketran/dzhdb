@@ -373,6 +373,8 @@ def calculate_points_get():
     )
 
     total_billable_point = sum(monthly_total_billable_points) if monthly_total_billable_points else 0.0
+    logwork_standard = FormulaService.get_logwork_standard_total(months)
+    billable_standard = FormulaService.get_billable_standard_total(months)
     
     # If multiple months, aggregate results per employee (1 record per employee)
     if len(months) > 1:
@@ -422,7 +424,9 @@ def calculate_points_get():
             "average_billable_point": average_billable_point,
             "total_billable_point": total_billable_point,
             "total_ticket_point": total_ticket_point,
-            "total_logwork_point": total_logwork_point
+            "total_logwork_point": total_logwork_point,
+            "billable_standard": billable_standard,
+            "logwork_standard": logwork_standard
         }),
         message="Points calculated successfully"
     )
@@ -464,6 +468,11 @@ def calculate_employee_point(employee_id: str):
     else:
         latest = latest_raw.lower() == "true"
 
+    print(
+        f"[calculate_employee_point] start employee_id={employee_id}, raw_month={request.args.get('month')}, parsed_months={months}, year={year}, latest_raw={latest_raw}, latest={latest}",
+        flush=True,
+    )
+
     # Default month filter to current month when not provided
     if not months:
         months = [datetime.now().month]
@@ -489,20 +498,38 @@ def calculate_employee_point(employee_id: str):
         year = datetime.now().year
 
     # For single-employee endpoint, only keep months where employee has logwork
+    print(
+        f"[calculate_employee_point] before_logwork_filter employee_id={employee.id}, months={months}, year={year}",
+        flush=True,
+    )
     months = FormulaService.filter_months_with_logwork(str(employee.id), months, year)
+    print(
+        f"[calculate_employee_point] after_logwork_filter employee_id={employee.id}, months={months}",
+        flush=True,
+    )
+
+    logwork_standard = FormulaService.get_logwork_standard_total(months)
+    billable_standard = FormulaService.get_billable_standard_total(months)
 
     if not months:
+        print(
+            f"[calculate_employee_point] no_logwork_data employee_id={employee.id}, year={year}, requested_months={request.args.get('month')}",
+            flush=True,
+        )
         return ApiResponse.success(
             data=_round_floats({
                 "results": [],
                 "average_billable_point": 0.0,
                 "total_billable_point": 0.0,
                 "total_ticket_point": 0.0,
-                "total_logwork_point": 0.0
+                "total_logwork_point": 0.0,
+                "billable_standard": billable_standard,
+                "logwork_standard": logwork_standard
             }),
             message="No logwork data found for selected month(s)"
         )
     
+    print(f"[calculate_employee_point] months_for_calculation={months}", flush=True)
     # Calculate all points for the employee
     # result = FormulaService.calculate_employee_all_points(
     #     employee_id=employee_id,
@@ -590,7 +617,9 @@ def calculate_employee_point(employee_id: str):
             "average_billable_point": average_billable_point,
             "total_billable_point": total_billable_point,
             "total_ticket_point": total_ticket_point,
-            "total_logwork_point": total_logwork_point
+            "total_logwork_point": total_logwork_point,
+            "billable_standard": billable_standard,
+            "logwork_standard": logwork_standard
         }),
         message="Point calculated successfully"
     )
