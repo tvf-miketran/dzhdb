@@ -417,16 +417,26 @@ def calculate_points_get():
     all_results.sort(
         key=lambda x: (x.get("employee") or {}).get("en_full_name", "").lower()
     )
+    
+    params = FormulaService.get_formula(month)["parameters"]
+    
+    total_team_ee = 0.0
+    for r in all_results:
+        total_team_ee += r.get("member_performance")["total_ee"]
+    
+    average_ee = total_team_ee / len(all_results) if all_results else 0.0
 
     return ApiResponse.success(
         data=_round_floats({
             "results": all_results,
+            "params": params,
             "average_billable_point": average_billable_point,
             "total_billable_point": total_billable_point,
             "total_ticket_point": total_ticket_point,
             "total_logwork_point": total_logwork_point,
             "billable_standard": billable_standard,
-            "logwork_standard": logwork_standard
+            "logwork_standard": logwork_standard,
+            "average_ee":average_ee,
         }),
         message="Points calculated successfully"
     )

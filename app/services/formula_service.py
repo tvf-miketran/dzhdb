@@ -395,8 +395,8 @@ class FormulaService:
                     roles_seen.add(role_id)
         
         # Get ticket type IDs for counting
-        task_type = TicketTypeDAO.get_by_type_id("TASK")
         bug_type = TicketTypeDAO.get_by_type_id("BUG")
+        epic_type = TicketTypeDAO.get_by_type_id("EPIC")
         
         # Get role details
         from app.models.role import Role
@@ -416,7 +416,9 @@ class FormulaService:
                 if ticket.role_ids and role_id in ticket.role_ids:
                     if ticket.ticket_type_id == bug_type.id:
                         role_bug_count += 1
-                    elif ticket.ticket_type_id == task_type.id:
+                    elif ticket.ticket_type_id == epic_type.id:
+                        role_task_count += 7
+                    else:
                         role_task_count += 1
             
             # Get role weight and standard
