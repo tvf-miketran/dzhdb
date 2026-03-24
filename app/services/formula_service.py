@@ -779,11 +779,13 @@ class FormulaService:
                     average_billable_point, total_billable_point = FormulaService._calculate_billable_metrics(filtered_data, month_str)
                     total_ticket_point = FormulaService._calculate_total_ticket_point(filtered_data)
                     total_logwork_point = FormulaService._calculate_total_logwork_point(filtered_data)
-                    return filtered_data, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point
+                    average_ee = FormulaService.calculate_average_team_ee(filtered_data)
+                    return filtered_data, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point, average_ee
                 average_billable_point, total_billable_point = FormulaService._calculate_billable_metrics(stored_data, month_str)
                 total_ticket_point = FormulaService._calculate_total_ticket_point(stored_data)
                 total_logwork_point = FormulaService._calculate_total_logwork_point(stored_data)
-                return stored_data, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point
+                average_ee = FormulaService.calculate_average_team_ee(stored_data)
+                return stored_data, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point , average_ee
         
         # Need to calculate fresh
         # Always compute with full team context so billable distribution is consistent.
@@ -853,6 +855,8 @@ class FormulaService:
             employee_id = result.get("employee_id")
 
             result["member_performance"] = FormulaService.calculate_member_performance(employee_id, billable_point, month)
+        
+        average_ee = FormulaService.calculate_average_team_ee(results)
 
         if employeeuuid:
             employeeuuid_str = str(employeeuuid)
@@ -869,7 +873,7 @@ class FormulaService:
         total_ticket_point = FormulaService._calculate_total_ticket_point(results)
         total_logwork_point = FormulaService._calculate_total_logwork_point(results)
 
-        return results, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point
+        return results, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point, average_ee
     
     @staticmethod
     def calculate_total_ee(employee_id: str) -> int:
@@ -962,3 +966,12 @@ class FormulaService:
             Dict with point calculation
         """
         return FormulaService.calculate_ticket_point(employee_id, month, formula_string)
+    
+    @staticmethod
+    def calculate_average_team_ee(team_results: list):
+        total_team_ee = 0.0
+        for r in team_results:
+            total_team_ee += r.get("member_performance")["total_ee"]
+    
+        average_ee = total_team_ee / len(team_results) if team_results else 0.0
+        return average_ee

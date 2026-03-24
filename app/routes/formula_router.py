@@ -355,7 +355,7 @@ def calculate_points_get():
     total_ticket_point = 0.0
     total_logwork_point = 0.0
     for month in months:
-        results, average_billable_point, total_billable_point, monthly_ticket_point, monthly_logwork_point = FormulaService.calculate_all_employees(
+        results, average_billable_point, total_billable_point, monthly_ticket_point, monthly_logwork_point, average_ee = FormulaService.calculate_all_employees(
             month=month,
             year=year,
             employeeuuid=employeeuuid,
@@ -420,12 +420,6 @@ def calculate_points_get():
     
     params = FormulaService.get_formula(month)["parameters"]
     
-    total_team_ee = 0.0
-    for r in all_results:
-        total_team_ee += r.get("member_performance")["total_ee"]
-    
-    average_ee = total_team_ee / len(all_results) if all_results else 0.0
-
     return ApiResponse.success(
         data=_round_floats({
             "results": all_results,
@@ -555,7 +549,7 @@ def calculate_employee_point(employee_id: str):
     total_logwork_point = 0.0
 
     for month in months:
-        result, average_billable_point, monthly_total_billable_point, monthly_total_ticket_point, monthly_total_logwork_point = FormulaService.calculate_all_employees(
+        result, average_billable_point, monthly_total_billable_point, monthly_total_ticket_point, monthly_total_logwork_point, average_ee = FormulaService.calculate_all_employees(
             month=month,
             year=year,
             employeeuuid=str(employee.id),
@@ -621,6 +615,8 @@ def calculate_employee_point(employee_id: str):
     #     result["total_team_points"] = all_results[0].get("total_team_points", 0)
     #     result["billable_point"] = all_results[0].get("billable_point", 0)
     
+    params = FormulaService.get_formula(month)["parameters"]
+    
     return ApiResponse.success(
         data=_round_floats({
             "results": all_results,
@@ -629,7 +625,9 @@ def calculate_employee_point(employee_id: str):
             "total_ticket_point": total_ticket_point,
             "total_logwork_point": total_logwork_point,
             "billable_standard": billable_standard,
-            "logwork_standard": logwork_standard
+            "logwork_standard": logwork_standard,
+            "params": params,
+            "average_ee": average_ee
         }),
         message="Point calculated successfully"
     )
