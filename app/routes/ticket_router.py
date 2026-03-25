@@ -7,6 +7,7 @@ from app.requests.ticket_request import CreateTicketRequest, UpdateTicketRequest
 from app.services.ticket_service import TicketService
 from app.responses import ApiResponse
 from app.utils.decorators import admin_required
+from app.utils.auth_helpers import get_current_user
 from app.utils.query_helpers import parse_list_param, parse_int_list_param
 from app.dao.employee_dao import EmployeeDAO
 from sqlalchemy.exc import DataError
@@ -687,10 +688,20 @@ def update_ticket(id: str):
             "message": "Validation failed",
             "errors": errors
         }), 422
+
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({
+            "success": False,
+            "message": "User not found",
+            "errors": None
+        }), 404
     
     # Update ticket
     ticket, update_errors = TicketService.update(
         id=id,
+        current_user_id=str(current_user.id),
+        current_user_role=current_user.authorize_role,
         ticket_id=req.ticket_id,
         ticket_link=req.ticket_link,
         project_id=req.project_id,
@@ -703,7 +714,12 @@ def update_ticket(id: str):
     )
     
     if update_errors:
-        status_code = 404 if "not found" in update_errors[0].lower() else 400
+        status_code = 400
+        if any("not authorized" in err.lower() for err in update_errors):
+            status_code = 403
+        elif any("not found" in err.lower() for err in update_errors):
+            status_code = 404
+
         return jsonify({
             "success": False,
             "message": update_errors[0],
@@ -776,9 +792,21 @@ def update_tickets():
             "message": "Tickets array is required",
             "errors": None
         }), 400
+
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({
+            "success": False,
+            "message": "User not found",
+            "errors": None
+        }), 404
     
     # Use bulk update method
-    updated_tickets, not_found_tickets, errors = TicketService.update_bulk(tickets_data)
+    updated_tickets, not_found_tickets, errors = TicketService.update_bulk(
+        tickets_data=tickets_data,
+        current_user_id=str(current_user.id),
+        current_user_role=current_user.authorize_role
+    )
     
     # Build response data
     response_data = {
@@ -805,6 +833,19 @@ def update_tickets():
         message_parts.append(f"{len(errors)} error(s)")
     
     message = ", ".join(message_parts) if message_parts else "No changes"
+
+    all_errors_forbidden = bool(errors) and all(
+        isinstance(error, dict) and error.get("code") == "forbidden"
+        for error in errors
+    )
+
+    if not updated_tickets and errors and all_errors_forbidden and not not_found_tickets:
+        return jsonify({
+            "success": False,
+            "message": "Not authorized to update ticket(s)",
+            "errors": errors,
+            "data": response_data
+        }), 403
     
     # Determine success status
     # If all tickets failed to update (not found or errors), return 400
@@ -822,19 +863,148 @@ def update_tickets():
     )
 
 
+@ticket_bp.route("/bulk", methods=["DELETE"])
+@jwt_required()
+# @admin_required
+def delete_tickets_bulk():
+    """Delete multiple tickets
+
+    Request body:
+    {
+        "ids": [
+            "uuid-string-or-ticket-id",
+            "uuid-string-or-ticket-id"
+        ]
+    }
+
+    Response:
+    {
+        "success": true,
+        "data": {
+            "deleted": [...],
+            "not_found": [...],
+            "errors": [...],
+            "total_deleted": 2,
+            "total_not_found": 1,
+            "total_errors": 0
+        },
+        "message": "2 ticket(s) deleted successfully, 1 not found"
+    }
+    """
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "success": False,
+            "message": "Request body is required",
+            "errors": None
+        }), 400
+
+    ids = data.get("ids")
+    if not ids or not isinstance(ids, list):
+        return jsonify({
+            "success": False,
+            "message": "ids array is required",
+            "errors": None
+        }), 400
+
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({
+            "success": False,
+            "message": "User not found",
+            "errors": None
+        }), 404
+
+    deleted_tickets, not_found_tickets, errors = TicketService.delete_bulk(
+        ids=ids,
+        current_user_id=str(current_user.id),
+        current_user_role=current_user.authorize_role
+    )
+
+    response_data = {
+        "deleted": deleted_tickets,
+        "total_deleted": len(deleted_tickets)
+    }
+
+    if not_found_tickets:
+        response_data["not_found"] = not_found_tickets
+        response_data["total_not_found"] = len(not_found_tickets)
+
+    if errors:
+        response_data["errors"] = errors
+        response_data["total_errors"] = len(errors)
+
+    message_parts = []
+    if deleted_tickets:
+        message_parts.append(f"{len(deleted_tickets)} ticket(s) deleted successfully")
+    if not_found_tickets:
+        message_parts.append(f"{len(not_found_tickets)} not found")
+    if errors:
+        message_parts.append(f"{len(errors)} error(s)")
+
+    message = ", ".join(message_parts) if message_parts else "No changes"
+
+    all_errors_forbidden = bool(errors) and all(
+        isinstance(error, dict) and error.get("code") == "forbidden"
+        for error in errors
+    )
+
+    if not deleted_tickets and errors and all_errors_forbidden and not not_found_tickets:
+        return jsonify({
+            "success": False,
+            "message": "Not authorized to delete ticket(s)",
+            "errors": errors,
+            "data": response_data
+        }), 403
+
+    if not deleted_tickets and (not_found_tickets or errors):
+        return jsonify({
+            "success": False,
+            "message": message,
+            "errors": errors if errors else None,
+            "data": response_data
+        }), 400
+
+    return ApiResponse.success(
+        data=response_data,
+        message=message
+    )
+
+
 @ticket_bp.route("/<string:id>", methods=["DELETE"])
 @jwt_required()
 # @admin_required
 def delete_ticket(id: str):
     """Delete ticket"""
-    success, errors = TicketService.delete(id)
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({
+            "success": False,
+            "message": "User not found",
+            "errors": None
+        }), 404
+
+    success, errors = TicketService.delete(
+        id=id,
+        current_user_id=str(current_user.id),
+        current_user_role=current_user.authorize_role
+    )
     
     if not success:
+        status_code = 404
+        if errors and any("not authorized" in err.lower() for err in errors):
+            status_code = 403
+        elif errors and any("not found" in err.lower() for err in errors):
+            status_code = 404
+        else:
+            status_code = 400
+
         return jsonify({
             "success": False,
             "message": "Failed to delete ticket",
             "errors": errors
-        }), 404
+        }), status_code
     
     return ApiResponse.success(data=None, message="Ticket deleted successfully")
 
