@@ -97,6 +97,7 @@ The Routes layer defines HTTP endpoints and handles request/response:
 POST   /login              # User login with email and password
 GET    /me                 # Get current user information (requires JWT)
 POST   /reset-password     # Reset user password (requires JWT)
+DELETE /employees/<id>     # Delete employee by UUID or employeeId (admin only)
 ```
 
 **Responsibilities**:
@@ -104,6 +105,59 @@ POST   /reset-password     # Reset user password (requires JWT)
 - Request validation
 - Response formatting
 - JWT token requirement enforcement
+
+### Delete Employee API
+
+Endpoint:
+
+```
+DELETE /employees/<id>
+Authorization: Bearer <access_token>
+```
+
+Requirements:
+- Requires JWT token
+- Requires ADMIN permission
+- Supports UUID or employeeId in path
+
+Request body:
+
+```json
+{
+   "confirm": true,
+   "reason": "Optional delete reason"
+}
+```
+
+Success response:
+
+```json
+{
+   "success": true,
+   "message": "Employee deleted successfully",
+   "data": {
+      "id": "uuid",
+      "employeeId": "T0759",
+      "email": "user@example.com",
+      "vnFullName": "Nguyen Van A",
+      "enFullName": "Nguyen Van A",
+      "deleted": true,
+      "reason": "Optional delete reason"
+   }
+}
+```
+
+Validation errors example:
+
+```json
+{
+   "success": false,
+   "message": "Validation failed",
+   "errors": [
+      "confirm must be true to delete employee"
+   ]
+}
+```
 
 ## Technology Stack
 

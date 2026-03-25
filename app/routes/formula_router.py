@@ -284,6 +284,30 @@ def add_param():
     return ApiResponse.success(data=result, message="Parameters added successfully")
 
 
+@formula_bp.route("/kpi/closed-tickets", methods=["GET"])
+@jwt_required()
+@admin_required
+def get_closed_ticket_kpi():
+    """Get closed-ticket KPI for latest 3/6/9 months.
+
+    Query parameters:
+    - month: Number of months to return (3, 6, 9). Default is 3.
+    """
+    month_count = request.args.get("month", default=3, type=int)
+    if month_count not in (3, 6, 9):
+        return jsonify({
+            "success": False,
+            "message": "month must be one of 3, 6, or 9",
+            "errors": None
+        }), 400
+
+    data = FormulaService.get_closed_ticket_kpi(month_count)
+    return ApiResponse.success(
+        data=_round_floats(data),
+        message="Closed ticket KPI retrieved successfully"
+    )
+
+
 @formula_bp.route("/calculate", methods=["GET"])
 @jwt_required()
 @admin_required
@@ -354,6 +378,10 @@ def calculate_points_get():
     monthly_total_billable_points = []
     total_ticket_point = 0.0
     total_logwork_point = 0.0
+    total_tickets_closed = 0
+    total_tickets_inqa = 0
+    total_tickets = 0
+    # params = []
     for month in months:
         results, average_billable_point, total_billable_point, monthly_ticket_point, monthly_logwork_point, average_ee = FormulaService.calculate_all_employees(
             month=month,
@@ -361,6 +389,28 @@ def calculate_points_get():
             employeeuuid=employeeuuid,
             latest=latest
         )
+
+        total_tickets_closed += FormulaService.count_tickets(
+            month=month,
+            employeeuuid=employeeuuid,
+            status_id="CLOSED",
+        )
+        total_tickets_inqa += FormulaService.count_tickets(
+            month=month,
+            employeeuuid=employeeuuid,
+            status_id="IN_QA",
+        )
+        total_tickets += FormulaService.count_tickets(
+            month=month,
+            employeeuuid=employeeuuid,
+        )
+
+        # param = FormulaService.get_formula(month)["parameters"]
+        # params.append({
+        #     "month": month,
+        #     "param": param
+        # })
+
         all_results.extend(results)
         monthly_average_billable_points.append(average_billable_point)
         monthly_total_billable_points.append(total_billable_point)
@@ -418,7 +468,7 @@ def calculate_points_get():
         key=lambda x: (x.get("employee") or {}).get("en_full_name", "").lower()
     )
     
-    params = FormulaService.get_formula(month)["parameters"]
+    params = FormulaService.get_formula(month)["parameters"] #this return first month
     
     return ApiResponse.success(
         data=_round_floats({
@@ -428,6 +478,9 @@ def calculate_points_get():
             "total_billable_point": total_billable_point,
             "total_ticket_point": total_ticket_point,
             "total_logwork_point": total_logwork_point,
+            "total_tickets_closed": total_tickets_closed,
+            "total_tickets_inqa": total_tickets_inqa,
+            "total_tickets": total_tickets,
             "billable_standard": billable_standard,
             "logwork_standard": logwork_standard,
             "average_ee":average_ee,
@@ -465,6 +518,7 @@ def calculate_employee_point(employee_id: str):
     }
     """
     months = parse_int_list_param(request.args.get("month"))
+    raw_month = months
     year = request.args.get("year", type=int)
     latest_raw = request.args.get("latest")
     if latest_raw is None or latest_raw == "":
@@ -520,6 +574,7 @@ def calculate_employee_point(employee_id: str):
             f"[calculate_employee_point] no_logwork_data employee_id={employee.id}, year={year}, requested_months={request.args.get('month')}",
             flush=True,
         )
+        params = FormulaService.get_formula(raw_month)["parameters"]
         return ApiResponse.success(
             data=_round_floats({
                 "results": [],
@@ -528,7 +583,9 @@ def calculate_employee_point(employee_id: str):
                 "total_ticket_point": 0.0,
                 "total_logwork_point": 0.0,
                 "billable_standard": billable_standard,
-                "logwork_standard": logwork_standard
+                "logwork_standard": logwork_standard,
+                "params": params,
+                "average_ee": 0.0,
             }),
             message="No logwork data found for selected month(s)"
         )

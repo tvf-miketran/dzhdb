@@ -110,3 +110,36 @@ class UpdateEmployeeRequest:
             authorize_role=authorize_role.upper() if authorize_role else None,
             status=status
         ), None
+
+
+@dataclass
+class DeleteEmployeeRequest:
+    confirm: bool
+    reason: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Tuple[Optional["DeleteEmployeeRequest"], Optional[List[str]]]:
+        """Parse and validate delete employee request"""
+        errors = []
+
+        if not isinstance(data, dict):
+            return None, ["Invalid request body"]
+
+        confirm = data.get("confirm")
+        reason = data.get("reason")
+
+        if not isinstance(confirm, bool):
+            errors.append("confirm must be a boolean")
+        elif not confirm:
+            errors.append("confirm must be true to delete employee")
+
+        if reason is not None and not isinstance(reason, str):
+            errors.append("reason must be a string")
+
+        if errors:
+            return None, errors
+
+        return cls(
+            confirm=confirm,
+            reason=reason.strip() if isinstance(reason, str) else None
+        ), None

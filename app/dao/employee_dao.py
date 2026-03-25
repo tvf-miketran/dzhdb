@@ -41,6 +41,17 @@ class EmployeeDAO:
         )
 
     @staticmethod
+    def get_all_active_non_admin() -> List[Employee]:
+        """Get active employees excluding ADMIN role."""
+        return (
+            Employee.query
+            .options(*_with_projects())
+            .filter(Employee.status.is_(True))
+            .filter(Employee.authorize_role != "ADMIN")
+            .all()
+        )
+
+    @staticmethod
     def count_active_non_admin() -> int:
         """Count active employees excluding ADMIN role."""
         return (
@@ -206,6 +217,18 @@ class EmployeeDAO:
             employee.status = status
             db.session.commit()
             return employee
+        except Exception:
+            db.session.rollback()
+            raise
+
+    # ---------- DELETE ----------
+    @staticmethod
+    def delete(employee: Employee) -> bool:
+        """Delete employee"""
+        try:
+            db.session.delete(employee)
+            db.session.commit()
+            return True
         except Exception:
             db.session.rollback()
             raise

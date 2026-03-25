@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, create_access_token
 
 from app.services.employee_service import EmployeeService
 from app.services.auth_service import AuthService
-from app.requests.employee_request import CreateEmployeeRequest, UpdateEmployeeRequest
+from app.requests.employee_request import CreateEmployeeRequest, UpdateEmployeeRequest, DeleteEmployeeRequest
 from app.utils.decorators import admin_required
 from app.utils.auth_helpers import get_current_user
 from app.responses import ApiResponse
@@ -340,6 +340,52 @@ def update_employee(id: str):
     }
     
     return ApiResponse.success(data=data, message="Employee updated successfully")
+
+
+@employee_bp.route("/<string:id>", methods=["DELETE"])
+@jwt_required()
+@admin_required
+def delete_employee(id: str):
+    """Delete employee (Admin only)
+
+    Request body:
+    {
+        "confirm": true,
+        "reason": "Optional delete reason"
+    }
+    """
+    data = request.get_json(silent=True)
+
+    req, errors = DeleteEmployeeRequest.from_dict(data or {})
+
+    if errors:
+        return jsonify({
+            "success": False,
+            "message": "Validation failed",
+            "errors": errors
+        }), 422
+
+    employee, error = EmployeeService.delete(id)
+
+    if error:
+        status_code = 404 if "not found" in error.lower() else 400
+        return jsonify({
+            "success": False,
+            "message": error,
+            "errors": None
+        }), status_code
+
+    response_data = {
+        "id": str(employee.id),
+        "employeeId": employee.employeeId,
+        "email": employee.email,
+        "vnFullName": employee.vn_full_name,
+        "enFullName": employee.en_full_name,
+        "deleted": True,
+        "reason": req.reason
+    }
+
+    return ApiResponse.success(data=response_data, message="Employee deleted successfully")
 
 @employee_bp.route("/reset-password", methods=["POST"])
 @jwt_required()
