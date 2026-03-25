@@ -9,6 +9,16 @@ from app.requests.ticket_request import parse_week_string, validate_week_in_mont
 
 
 class TicketService:
+    @staticmethod
+    def _can_adjust_ticket(ticket: Ticket, current_user_id: str, current_user_role: Optional[str]) -> bool:
+        """A ticket can be deleted only by admin or ticket owner."""
+        if RoleDAO._is_admin(current_user_role):
+            return True
+
+        if not ticket or not ticket.employee_id or not current_user_id:
+            return False
+
+        return str(ticket.employee_id) == str(current_user_id)
 
     @staticmethod
     def _resolve_role_ids(role_ids: Optional[List[str]]) -> Tuple[Optional[List[str]], Optional[List[str]]]:
@@ -383,6 +393,8 @@ class TicketService:
     @staticmethod
     def update(
         id: str,
+        current_user_id: str,
+        current_user_role: Optional[str] = None,
         ticket_id: Optional[str] = None,
         ticket_link: Optional[str] = None,
         project_id: Optional[str] = None,
@@ -405,6 +417,9 @@ class TicketService:
         
         if not ticket:
             return None, ["Ticket not found"]
+
+        if not TicketService._can_adjust_ticket(ticket, current_user_id, current_user_role):
+            return None, ["Not authorized to update this ticket"]
         
         errors = []
         
@@ -461,7 +476,9 @@ class TicketService:
 
     @staticmethod
     def update_bulk(
-        tickets_data: List[Dict[str, Any]]
+        tickets_data: List[Dict[str, Any]],
+        current_user_id: str,
+        current_user_role: Optional[str] = None
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Update multiple tickets
         
@@ -511,6 +528,15 @@ class TicketService:
                     "index": idx,
                     "id": ticket_uuid,
                     "message": "Ticket not found"
+                })
+                continue
+
+            if not TicketService._can_adjust_ticket(ticket, current_user_id, current_user_role):
+                errors.append({
+                    "index": idx,
+                    "ticketId": ticket_uuid,
+                    "code": "forbidden",
+                    "errors": ["Not authorized to update this ticket"]
                 })
                 continue
             
@@ -627,7 +653,11 @@ class TicketService:
         return updated_tickets, not_found_tickets, errors
     
     @staticmethod
-    def delete(id: str) -> Tuple[bool, Optional[List[str]]]:
+    def delete(
+        id: str,
+        current_user_id: str,
+        current_user_role: Optional[str] = None
+    ) -> Tuple[bool, Optional[List[str]]]:
         """Delete ticket by UUID or ticket_id
         
         Returns:
@@ -640,12 +670,98 @@ class TicketService:
         
         if not ticket:
             return False, ["Ticket not found"]
+
+        if not TicketService._can_adjust_ticket(ticket, current_user_id, current_user_role):
+            return False, ["Not authorized to delete this ticket"]
         
         try:
             deleted = TicketDAO.delete(str(ticket.id))
             return deleted, None
         except Exception as e:
             return False, [str(e)]
+
+    @staticmethod
+    def delete_bulk(
+        ids: List[str],
+        current_user_id: str,
+        current_user_role: Optional[str] = None
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Delete multiple tickets by UUID or ticket_id
+
+        Args:
+            ids: List of ticket identifiers (UUID or ticket_id)
+
+        Returns:
+            Tuple of (deleted_tickets, not_found_tickets, errors)
+        """
+        deleted_tickets = []
+        not_found_tickets = []
+        errors = []
+
+        for idx, ticket_identifier in enumerate(ids):
+            if ticket_identifier is None:
+                errors.append({
+                    "index": idx,
+                    "id": ticket_identifier,
+                    "errors": ["Ticket identifier is required"]
+                })
+                continue
+
+            ticket_identifier = str(ticket_identifier).strip()
+            if not ticket_identifier:
+                errors.append({
+                    "index": idx,
+                    "id": ticket_identifier,
+                    "errors": ["Ticket identifier is required"]
+                })
+                continue
+
+            # Try to get by UUID first, then by ticket_id
+            ticket = TicketDAO.get_by_id(ticket_identifier)
+            if not ticket:
+                ticket = TicketDAO.get_by_ticket_id(ticket_identifier)
+
+            if not ticket:
+                not_found_tickets.append({
+                    "index": idx,
+                    "id": ticket_identifier,
+                    "message": "Ticket not found"
+                })
+                continue
+
+            if not TicketService._can_adjust_ticket(ticket, current_user_id, current_user_role):
+                errors.append({
+                    "index": idx,
+                    "id": ticket_identifier,
+                    "ticketId": ticket.ticket_id,
+                    "code": "forbidden",
+                    "errors": ["Not authorized to delete this ticket"]
+                })
+                continue
+
+            try:
+                deleted = TicketDAO.delete(str(ticket.id))
+                if deleted:
+                    deleted_tickets.append({
+                        "index": idx,
+                        "id": ticket_identifier,
+                        "deletedId": str(ticket.id),
+                        "ticketId": ticket.ticket_id
+                    })
+                else:
+                    errors.append({
+                        "index": idx,
+                        "id": ticket_identifier,
+                        "errors": ["Failed to delete ticket"]
+                    })
+            except Exception as e:
+                errors.append({
+                    "index": idx,
+                    "id": ticket_identifier,
+                    "errors": [str(e)]
+                })
+
+        return deleted_tickets, not_found_tickets, errors
     
     @staticmethod
     def _to_dict(ticket: Ticket) -> Dict[str, Any]:

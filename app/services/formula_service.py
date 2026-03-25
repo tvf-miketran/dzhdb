@@ -384,7 +384,8 @@ class FormulaService:
         # Get employee's tickets for the month to collect roles
         tickets = Ticket.query.filter(
             Ticket.employee_id == employee_id,
-            Ticket.month == month
+            Ticket.month == month,
+            Ticket.ticket_status_id == TicketStatusDAO.get_by_status_id("CLOSED").id
         ).all()
         
         # Collect all unique roles from tickets

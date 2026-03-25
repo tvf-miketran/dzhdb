@@ -27,6 +27,11 @@ class RoleDAO:
         return Role.query.order_by(Role.name).all()
 
     @staticmethod
+    def _is_admin(authorize_role: Optional[str]) -> bool:
+        """Check whether authorize role is ADMIN."""
+        return str(authorize_role or "").upper() == "ADMIN"
+
+    @staticmethod
     def create(role_id: str, name: str) -> Role:
         """Create new role"""
         try:
