@@ -5,6 +5,7 @@ from app.dao.employee_dao import EmployeeDAO
 from app.dao.formula_dao import FormulaDAO
 from app.dao.ticket_type_dao import TicketTypeDAO
 from app.dao.ticket_status_dao import TicketStatusDAO
+from app.dao.role_dao import RoleDAO
 from app.models.systemparam import SystemParameter
 from app.models.ticket import Ticket
 from app import db
@@ -143,6 +144,10 @@ class FormulaService:
         # Default to current year if not provided
         if not year:
             year = datetime.now().year
+
+        active_non_admin_ids = {
+            str(emp.id) for emp in EmployeeDAO.get_all_active_non_admin()
+        }
         
         query = Logwork.query.filter(
             Logwork.user_id == employee_id,
@@ -729,6 +734,118 @@ class FormulaService:
         return sum(emp.get("logwork_point", 0.0) for emp in data)
 
     @staticmethod
+    def count_tickets(
+        month: int,
+        employeeuuid: str = None,
+        status_id: str = None,
+    ) -> int:
+        """Count tickets by month with optional employee and status filters."""
+        ticket_status_id = None
+        if status_id:
+            status = TicketStatusDAO.get_by_status_id(status_id)
+            if not status:
+                return 0
+            ticket_status_id = status.id
+
+        return TicketDAO.count_by_filters(
+            month=month,
+            employee_id=employeeuuid,
+            ticket_status_id=ticket_status_id,
+            active_only=True,
+        )
+
+    @staticmethod
+    def get_closed_ticket_kpi(month_count: int = 3) -> Dict[str, Any]:
+        """Get closed-ticket KPI for the latest N months (3/6/9)."""
+        month_count = int(month_count or 3)
+        if month_count not in (3, 6, 9):
+            month_count = 3
+
+        now_month = datetime.now().month
+        months = [((now_month - offset - 1) % 12) + 1 for offset in reversed(range(month_count))]
+
+        closed_status = TicketStatusDAO.get_by_status_id("CLOSED")
+        if not closed_status:
+            return {
+                "month": month_count,
+                "months": months,
+                "series": {
+                    "developers_closed": [0] * len(months),
+                    "ba_closed": [0] * len(months),
+                    "eqa_closed": [0] * len(months),
+                    "iqa_closed": [0] * len(months),
+                },
+                "details": [
+                    {
+                        "month": m,
+                        "developers_closed": 0,
+                        "ba_closed": 0,
+                        "eqa_closed": 0,
+                        "iqa_closed": 0,
+                        "total_closed": 0,
+                    }
+                    for m in months
+                ],
+            }
+
+        role_map = {
+            "developers_closed": RoleDAO.get_by_role_id("DEV"),
+            "ba_closed": RoleDAO.get_by_role_id("BA"),
+            "eqa_closed": RoleDAO.get_by_role_id("EQA"),
+            "iqa_closed": RoleDAO.get_by_role_id("IQA"),
+        }
+        role_uuid_map = {
+            key: (str(role.id) if role else None)
+            for key, role in role_map.items()
+        }
+
+        series = {
+            "developers_closed": [],
+            "ba_closed": [],
+            "eqa_closed": [],
+            "iqa_closed": [],
+        }
+        details = []
+
+        for month in months:
+            month_counters = {
+                "developers_closed": 0,
+                "ba_closed": 0,
+                "eqa_closed": 0,
+                "iqa_closed": 0,
+            }
+
+            closed_tickets = TicketDAO.get_by_month_and_status_active_non_admin(
+                month=month,
+                ticket_status_id=str(closed_status.id),
+            )
+
+            for ticket in closed_tickets:
+                ticket_role_ids = {str(role_id) for role_id in (ticket.role_ids or [])}
+                for key, role_uuid in role_uuid_map.items():
+                    if role_uuid and role_uuid in ticket_role_ids:
+                        month_counters[key] += 1
+
+            for key in series:
+                series[key].append(month_counters[key])
+
+            details.append({
+                "month": month,
+                "developers_closed": month_counters["developers_closed"],
+                "ba_closed": month_counters["ba_closed"],
+                "eqa_closed": month_counters["eqa_closed"],
+                "iqa_closed": month_counters["iqa_closed"],
+                "total_closed": sum(month_counters.values()),
+            })
+
+        return {
+            "month": month_count,
+            "months": months,
+            "series": series,
+            "details": details,
+        }
+
+    @staticmethod
     def filter_months_with_logwork(employee_id: str, months: List[int], year: int) -> List[int]:
         """Keep only months where the employee has logwork records for the given year."""
         months_with_logwork = []
@@ -768,11 +885,19 @@ class FormulaService:
         # Default to current year if not provided
         if not year:
             year = datetime.now().year
+
+        active_non_admin_ids = {
+            str(emp.id) for emp in EmployeeDAO.get_all_active_non_admin()
+        }
         
         # Try to fetch from stored data if latest=False
         if not latest:
             stored_data = FormulaDAO.get_calculated_data(month, year, latest=False)
             if stored_data:
+                stored_data = [
+                    emp for emp in stored_data
+                    if str(emp.get("employee_id")) in active_non_admin_ids
+                ]
                 # Filter by employeeuuid if provided
                 if employeeuuid:
                     employeeuuid_str = str(employeeuuid)
@@ -790,7 +915,7 @@ class FormulaService:
         
         # Need to calculate fresh
         # Always compute with full team context so billable distribution is consistent.
-        employees = EmployeeDAO.get_all()
+        employees = EmployeeDAO.get_all_active_non_admin()
         
         results = []
         total_team_points = 0.0

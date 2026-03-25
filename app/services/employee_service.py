@@ -182,6 +182,23 @@ class EmployeeService:
             return updated, None
         except Exception as e:
             return None, str(e)
+
+    @staticmethod
+    def delete(id: str) -> Tuple[Optional[Employee], Optional[str]]:
+        """Delete employee by UUID or employeeId"""
+        employee = EmployeeDAO.get_by_id(id)
+
+        if not employee:
+            employee = EmployeeDAO.get_by_employee_id(id)
+
+        if not employee:
+            return None, "Employee not found"
+
+        try:
+            EmployeeDAO.delete(employee)
+            return employee, None
+        except Exception as e:
+            return None, str(e)
     
     @staticmethod
     def _to_dict(employee: Employee) -> Dict[str, Any]:

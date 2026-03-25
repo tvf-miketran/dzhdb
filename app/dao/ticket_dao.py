@@ -1,7 +1,8 @@
 
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, and_
 from sqlalchemy.orm import joinedload
 from app.models.ticket import Ticket
+from app.models.employee import Employee
 from app import db
 from typing import Optional, List
 
@@ -85,6 +86,55 @@ class TicketDAO:
             joinedload(Ticket.ticket_type),
             joinedload(Ticket.ticket_status)
         ).filter_by(project_id=project_id).all()
+
+    @staticmethod
+    def count_by_filters(
+        month: int,
+        employee_id: Optional[str] = None,
+        ticket_status_id: Optional[str] = None,
+        active_only: bool = False,
+    ) -> int:
+        """Count tickets by month with optional employee/status and active-employee filters."""
+        query = Ticket.query.filter(Ticket.month == month)
+
+        if employee_id:
+            query = query.filter(Ticket.employee_id == employee_id)
+
+        if ticket_status_id:
+            query = query.filter(Ticket.ticket_status_id == ticket_status_id)
+
+        if active_only:
+            query = query.filter(
+                Ticket.employee.has(
+                    and_(
+                        Employee.status.is_(True),
+                        Employee.authorize_role != "ADMIN",
+                    )
+                )
+            )
+
+        return query.count()
+
+    @staticmethod
+    def get_by_month_and_status_active_non_admin(
+        month: int,
+        ticket_status_id: str,
+    ) -> List[Ticket]:
+        """Get tickets by month and status, limited to active non-admin employees."""
+        return (
+            Ticket.query
+            .filter(Ticket.month == month)
+            .filter(Ticket.ticket_status_id == ticket_status_id)
+            .filter(
+                Ticket.employee.has(
+                    and_(
+                        Employee.status.is_(True),
+                        Employee.authorize_role != "ADMIN",
+                    )
+                )
+            )
+            .all()
+        )
     
     @staticmethod
     def get_all_filtered_sorted(
