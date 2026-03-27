@@ -109,6 +109,28 @@ class LogworkDAO:
         
         return query.all()
 
+    @staticmethod
+    def sum_hours_by_user_ids_months(
+        user_ids: List[str],
+        months: List[str],
+        year: str = None,
+    ) -> float:
+        """Sum logwork hours for given user IDs across given months."""
+        from sqlalchemy import func as sa_func
+
+        if not user_ids or not months:
+            return 0.0
+        query = db.session.query(
+            sa_func.coalesce(sa_func.sum(Logwork.loghours), 0)
+        ).filter(
+            Logwork.user_id.in_(user_ids),
+            Logwork.month.in_(months),
+        )
+        if year:
+            query = query.filter(Logwork.year == year)
+        result = query.scalar()
+        return float(result) if result else 0.0
+
     # ---------- CREATE ----------
     @staticmethod
     def create(user_id: str, log_hours: Decimal, month: str, year: str = '2026') -> Logwork:

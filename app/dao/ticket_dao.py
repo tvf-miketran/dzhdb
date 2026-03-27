@@ -137,6 +137,71 @@ class TicketDAO:
         )
     
     @staticmethod
+    def count_by_months_active(
+        months: List[int],
+        ticket_status_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+    ) -> int:
+        """Count tickets across months for active non-admin employees."""
+        query = Ticket.query.filter(Ticket.month.in_(months))
+        if ticket_status_id:
+            query = query.filter(Ticket.ticket_status_id == ticket_status_id)
+        if project_id:
+            query = query.filter(Ticket.project_id == project_id)
+        query = query.filter(
+            Ticket.employee.has(
+                and_(
+                    Employee.status.is_(True),
+                    Employee.authorize_role != "ADMIN",
+                )
+            )
+        )
+        return query.count()
+
+    @staticmethod
+    def count_by_project_employees_months(
+        project_id: str,
+        employee_ids: List[str],
+        months: List[int],
+        ticket_status_id: Optional[str] = None,
+    ) -> int:
+        """Count tickets for a project assigned to specific employees in given months."""
+        if not employee_ids:
+            return 0
+        query = Ticket.query.filter(
+            Ticket.project_id == project_id,
+            Ticket.employee_id.in_(employee_ids),
+            Ticket.month.in_(months),
+        )
+        if ticket_status_id:
+            query = query.filter(Ticket.ticket_status_id == ticket_status_id)
+        return query.count()
+
+    @staticmethod
+    def get_by_month_status_active(
+        month: int,
+        ticket_status_id: str,
+        project_id: Optional[str] = None,
+    ) -> List[Ticket]:
+        """Get tickets by month and status for active non-admin employees, with optional project filter."""
+        query = (
+            Ticket.query
+            .filter(Ticket.month == month)
+            .filter(Ticket.ticket_status_id == ticket_status_id)
+            .filter(
+                Ticket.employee.has(
+                    and_(
+                        Employee.status.is_(True),
+                        Employee.authorize_role != "ADMIN",
+                    )
+                )
+            )
+        )
+        if project_id:
+            query = query.filter(Ticket.project_id == project_id)
+        return query.all()
+
+    @staticmethod
     def get_all_filtered_sorted(
         page: int = 1,
         per_page: int = 10,
