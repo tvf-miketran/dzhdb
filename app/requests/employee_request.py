@@ -50,8 +50,8 @@ class CreateEmployeeRequest:
         elif len(password) < 6:
             errors.append("Password must be at least 6 characters")
         
-        if authorize_role not in ["MEMBER", "ADMIN"]:
-            errors.append("Authorize role must be MEMBER or ADMIN")
+        if authorize_role not in ["MEMBER", "MANAGER"]:
+            errors.append("Authorize role must be MEMBER or MANAGER")
         
         if errors:
             return None, errors
@@ -95,8 +95,8 @@ class UpdateEmployeeRequest:
         if email and not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
             errors.append("Invalid email format")
         
-        if authorize_role and authorize_role.upper() not in ["MEMBER", "ADMIN"]:
-            errors.append("Authorize role must be MEMBER or ADMIN")
+        if authorize_role and authorize_role.upper() not in ["MEMBER", "MANAGER"]:
+            errors.append("Authorize role must be MEMBER or MANAGER")
         
         if errors:
             return None, errors

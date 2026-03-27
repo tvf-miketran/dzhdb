@@ -1,3 +1,4 @@
+import uuid
 from sqlalchemy import Tuple, asc, desc
 from sqlalchemy.orm import joinedload
 from app.models.employee import Employee
