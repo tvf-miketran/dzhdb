@@ -755,39 +755,52 @@ class FormulaService:
         )
 
     @staticmethod
-    def get_closed_ticket_kpi(month_count: int = 3) -> Dict[str, Any]:
-        """Get closed-ticket KPI for the latest N months (3/6/9)."""
-        month_count = int(month_count or 3)
-        if month_count not in (3, 6, 9):
-            month_count = 3
+    def get_closed_ticket_kpi(month_count: int = 1, project_id: str = None) -> Dict[str, Any]:
+        """Get closed-ticket KPI for the latest N months (1/3/6/9) with optional project filter.
+
+        Returns data for:
+        - Ticket status totals (open, closed, in_qa, all)
+        - Status overview breakdown (for donut chart)
+        - Closed tickets by role per month (for bar + line charts)
+        - Project overview table with per-role metrics
+        """
+        month_count = int(month_count or 1)
+        if month_count not in (1, 3, 6, 9):
+            month_count = 1
 
         now_month = datetime.now().month
         months = [((now_month - offset - 1) % 12) + 1 for offset in reversed(range(month_count))]
+        month_strs = [str(m).zfill(2) for m in months]
+        year_str = str(datetime.now().year)
 
+        # --- Ticket status counts ---
+        all_statuses = TicketStatusDAO.get_all()
+        status_uuid_map = {s.status_id: str(s.id) for s in all_statuses}
+
+        total_tickets = TicketDAO.count_by_months_active(months, project_id=project_id)
+
+        def _status_count(status_code: str) -> int:
+            sid = status_uuid_map.get(status_code)
+            return TicketDAO.count_by_months_active(months, ticket_status_id=sid, project_id=project_id) if sid else 0
+
+        total_tickets_closed = _status_count("CLOSED")
+        total_tickets_inqa = _status_count("IN_QA")
+        total_tickets_open = _status_count("OPEN")
+
+        # Status overview for donut chart
+        status_overview = []
+        for s in all_statuses:
+            count = TicketDAO.count_by_months_active(months, ticket_status_id=str(s.id), project_id=project_id)
+            if count > 0:
+                status_overview.append({
+                    "status": s.status_id,
+                    "name": s.name,
+                    "count": count,
+                })
+        status_overview.sort(key=lambda x: x["count"], reverse=True)
+
+        # --- Closed tickets by role per month (bar + line charts) ---
         closed_status = TicketStatusDAO.get_by_status_id("CLOSED")
-        if not closed_status:
-            return {
-                "month": month_count,
-                "months": months,
-                "series": {
-                    "developers_closed": [0] * len(months),
-                    "ba_closed": [0] * len(months),
-                    "eqa_closed": [0] * len(months),
-                    "iqa_closed": [0] * len(months),
-                },
-                "details": [
-                    {
-                        "month": m,
-                        "developers_closed": 0,
-                        "ba_closed": 0,
-                        "eqa_closed": 0,
-                        "iqa_closed": 0,
-                        "total_closed": 0,
-                    }
-                    for m in months
-                ],
-            }
-
         role_map = {
             "developers_closed": RoleDAO.get_by_role_id("DEV"),
             "ba_closed": RoleDAO.get_by_role_id("BA"),
@@ -799,50 +812,126 @@ class FormulaService:
             for key, role in role_map.items()
         }
 
-        series = {
-            "developers_closed": [],
-            "ba_closed": [],
-            "eqa_closed": [],
-            "iqa_closed": [],
-        }
-        details = []
+        role_totals = {k: 0 for k in role_uuid_map}
+        total_trend: List[Dict[str, Any]] = []
 
         for month in months:
-            month_counters = {
-                "developers_closed": 0,
-                "ba_closed": 0,
-                "eqa_closed": 0,
-                "iqa_closed": 0,
-            }
+            month_counters = {k: 0 for k in role_uuid_map}
 
-            closed_tickets = TicketDAO.get_by_month_and_status_active_non_admin(
-                month=month,
-                ticket_status_id=str(closed_status.id),
-            )
+            if closed_status:
+                closed_tickets = TicketDAO.get_by_month_status_active(
+                    month=month,
+                    ticket_status_id=str(closed_status.id),
+                    project_id=project_id,
+                )
+                for ticket in closed_tickets:
+                    ticket_role_ids = {str(rid) for rid in (ticket.role_ids or [])}
+                    for key, role_uuid in role_uuid_map.items():
+                        if role_uuid and role_uuid in ticket_role_ids:
+                            month_counters[key] += 1
 
-            for ticket in closed_tickets:
-                ticket_role_ids = {str(role_id) for role_id in (ticket.role_ids or [])}
-                for key, role_uuid in role_uuid_map.items():
-                    if role_uuid and role_uuid in ticket_role_ids:
-                        month_counters[key] += 1
+            for key in role_totals:
+                role_totals[key] += month_counters[key]
 
-            for key in series:
-                series[key].append(month_counters[key])
-
-            details.append({
+            total_trend.append({
                 "month": month,
-                "developers_closed": month_counters["developers_closed"],
-                "ba_closed": month_counters["ba_closed"],
-                "eqa_closed": month_counters["eqa_closed"],
-                "iqa_closed": month_counters["iqa_closed"],
                 "total_closed": sum(month_counters.values()),
+            })
+
+        # --- Project overview table ---
+        if project_id:
+            proj = ProjectDAO.get_by_id(project_id)
+            projects = [proj] if proj else []
+        else:
+            projects = ProjectDAO.get_all_with_members()
+
+        closed_status_uuid = str(closed_status.id) if closed_status else None
+        project_overview = []
+
+        for proj in projects:
+            members = proj.project_members or []
+            resource_allocated = len(members)
+
+            role_groups: Dict[str, List[str]] = {}
+            for member in members:
+                role = member.role
+                if not role:
+                    continue
+                role_key = str(role.role_id).upper()
+                role_groups.setdefault(role_key, []).append(str(member.user_id))
+
+            roles_data = []
+            for role_key, emp_ids in role_groups.items():
+                total_assigned = TicketDAO.count_by_project_employees_months(
+                    project_id=str(proj.id),
+                    employee_ids=emp_ids,
+                    months=months,
+                )
+
+                completed = 0
+                if closed_status_uuid:
+                    completed = TicketDAO.count_by_project_employees_months(
+                        project_id=str(proj.id),
+                        employee_ids=emp_ids,
+                        months=months,
+                        ticket_status_id=closed_status_uuid,
+                    )
+
+                completion = (completed / total_assigned * 100) if total_assigned > 0 else 0
+
+                total_logged_hours = LogworkDAO.sum_hours_by_user_ids_months(
+                    user_ids=emp_ids,
+                    months=month_strs,
+                    year=year_str,
+                )
+
+                efficiency = (total_logged_hours / total_assigned) if total_assigned > 0 else 0
+
+                roles_data.append({
+                    "role": role_key,
+                    "total_assigned_ticket": total_assigned,
+                    "completed": completed,
+                    "completion": round(completion, 1),
+                    "total_logged_hours": total_logged_hours,
+                    "efficiency": round(efficiency, 1),
+                })
+
+            project_overview.append({
+                "project_id": str(proj.id),
+                "project_name": proj.name,
+                "resource_allocated": resource_allocated,
+                "roles": roles_data,
             })
 
         return {
             "month": month_count,
-            "months": months,
-            "series": series,
-            "details": details,
+
+            # 1) Bar chart – "Closed Tickets by Role"
+            "closed_by_role_chart": {
+                "months": months,
+                "developers": role_totals.get("developers_closed", 0),
+                "ba": role_totals.get("ba_closed", 0),
+                "eqa": role_totals.get("eqa_closed", 0),
+                "iqa": role_totals.get("iqa_closed", 0),
+            },
+
+            # 2) Line chart – "Total Trend"
+            "total_trend_chart": {
+                "months": months,
+                "data": total_trend,
+            },
+
+            # 3) Donut chart – "Status Overview"
+            "status_overview_chart": {
+                "total_tickets": total_tickets,
+                "total_tickets_open": total_tickets_open,
+                "total_tickets_closed": total_tickets_closed,
+                "total_tickets_inqa": total_tickets_inqa,
+                "items": status_overview,
+            },
+
+            # 4) Table – "Project Overview"
+            "project_overview_table": project_overview,
         }
 
     @staticmethod

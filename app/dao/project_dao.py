@@ -32,6 +32,15 @@ class ProjectDAO:
     def get_all() -> List[Project]:
         """Get all projects"""
         return Project.query.all()
+
+    @staticmethod
+    def get_all_with_members() -> List[Project]:
+        """Get all projects with members, roles, and bank eagerly loaded."""
+        return Project.query.options(
+            joinedload(Project.project_members).joinedload(ProjectMember.employee),
+            joinedload(Project.project_members).joinedload(ProjectMember.role),
+            joinedload(Project.bank),
+        ).all()
     
     @staticmethod
     def get_all_filtered_sorted(
