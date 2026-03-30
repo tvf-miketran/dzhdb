@@ -610,6 +610,7 @@ def calculate_employee_point(employee_id: str):
 
     all_results = []
     monthly_average_billable_points = []
+    monthly_average_ees = []
     total_billable_point = 0.0
     total_ticket_point = 0.0
     total_logwork_point = 0.0
@@ -623,6 +624,7 @@ def calculate_employee_point(employee_id: str):
         )
         all_results.extend(result)
         monthly_average_billable_points.append(average_billable_point)
+        monthly_average_ees.append(average_ee)
         total_billable_point += monthly_total_billable_point
         total_ticket_point += monthly_total_ticket_point
         total_logwork_point += monthly_total_logwork_point
@@ -630,6 +632,10 @@ def calculate_employee_point(employee_id: str):
     average_billable_point = (
         sum(monthly_average_billable_points) / len(monthly_average_billable_points)
         if monthly_average_billable_points else 0.0
+    )
+    average_ee = (
+        sum(monthly_average_ees) / len(monthly_average_ees)
+        if monthly_average_ees else 0.0
     )
 
     # If multiple months are selected, aggregate into one combined employee record
