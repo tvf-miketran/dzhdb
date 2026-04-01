@@ -93,8 +93,9 @@ class TicketDAO:
         employee_id: Optional[str] = None,
         ticket_status_id: Optional[str] = None,
         active_only: bool = False,
+        project_id: Optional[str] = None,
     ) -> int:
-        """Count tickets by month with optional employee/status and active-employee filters."""
+        """Count tickets by month with optional employee/status/project and active-employee filters."""
         query = Ticket.query.filter(Ticket.month == month)
 
         if employee_id:
@@ -102,6 +103,9 @@ class TicketDAO:
 
         if ticket_status_id:
             query = query.filter(Ticket.ticket_status_id == ticket_status_id)
+
+        if project_id:
+            query = query.filter(Ticket.project_id == project_id)
 
         if active_only:
             query = query.filter(
@@ -159,6 +163,36 @@ class TicketDAO:
         return query.count()
 
     @staticmethod
+    def count_distinct_by_months_active(
+        months: List[int],
+        ticket_status_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+    ) -> int:
+        """Count distinct ticket_id values across months for active non-admin employees.
+
+        Tickets assigned to multiple employees share the same ticket_id;
+        this counts each unique ticket_id only once.
+        """
+        from sqlalchemy import func as sa_func
+
+        query = db.session.query(
+            sa_func.count(sa_func.distinct(Ticket.ticket_id))
+        ).filter(Ticket.month.in_(months))
+        if ticket_status_id:
+            query = query.filter(Ticket.ticket_status_id == ticket_status_id)
+        if project_id:
+            query = query.filter(Ticket.project_id == project_id)
+        query = query.filter(
+            Ticket.employee.has(
+                and_(
+                    Employee.status.is_(True),
+                    Employee.authorize_role != "ADMIN",
+                )
+            )
+        )
+        return query.scalar() or 0
+
+    @staticmethod
     def count_by_project_employees_months(
         project_id: str,
         employee_ids: List[str],
@@ -176,6 +210,23 @@ class TicketDAO:
         if ticket_status_id:
             query = query.filter(Ticket.ticket_status_id == ticket_status_id)
         return query.count()
+
+    @staticmethod
+    def get_by_employee_month_status(
+        employee_id: str,
+        month: int,
+        ticket_status_id: str,
+        project_id: Optional[str] = None,
+    ) -> List[Ticket]:
+        """Get tickets for a specific employee, month and status, with optional project filter."""
+        query = Ticket.query.filter(
+            Ticket.employee_id == employee_id,
+            Ticket.month == month,
+            Ticket.ticket_status_id == ticket_status_id,
+        )
+        if project_id:
+            query = query.filter(Ticket.project_id == project_id)
+        return query.all()
 
     @staticmethod
     def get_by_month_status_active(

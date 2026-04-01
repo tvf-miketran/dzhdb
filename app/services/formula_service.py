@@ -344,6 +344,7 @@ class FormulaService:
         employee_id: str,
         month: int,
         formula_string: str = None,
+        project_id: str = None,
     ) -> Dict[str, Any]:
         """Calculate ticket point for a single employee
         
@@ -351,6 +352,7 @@ class FormulaService:
             employee_id: The employee UUID
             month: Month number (1-12)
             formula_string: Optional custom formula (defaults to stored formula)
+            project_id: Optional project UUID to filter tickets by
             
         Returns:
             Dict with ticket_point and breakdown
@@ -387,11 +389,13 @@ class FormulaService:
         breakdown = []
         
         # Get employee's tickets for the month to collect roles
-        tickets = Ticket.query.filter(
-            Ticket.employee_id == employee_id,
-            Ticket.month == month,
-            Ticket.ticket_status_id == TicketStatusDAO.get_by_status_id("CLOSED").id
-        ).all()
+        closed_status_id = TicketStatusDAO.get_by_status_id("CLOSED").id
+        tickets = TicketDAO.get_by_employee_month_status(
+            employee_id=employee_id,
+            month=month,
+            ticket_status_id=closed_status_id,
+            project_id=project_id,
+        )
         
         # Collect all unique roles from tickets
         roles_seen = set()
@@ -643,6 +647,7 @@ class FormulaService:
         month: int,
         year: int = None,
         latest: bool = False,
+        project_id: str = None,
     ) -> Dict[str, Any]:
         """Calculate all points for a single employee (ticket, logwork, member_contr, billable)
         
@@ -651,6 +656,7 @@ class FormulaService:
             month: Month number (1-12)
             year: Year (optional, defaults to current year)
             latest: If True, recalculate. If False, try to fetch from stored data.
+            project_id: Optional project UUID to filter tickets by
             
         Returns:
             Dict with all point calculations
@@ -659,8 +665,8 @@ class FormulaService:
         if not year:
             year = datetime.now().year
         
-        # Check if we should fetch from stored data
-        if not latest:
+        # Check if we should fetch from stored data (only when no project filter)
+        if not latest and not project_id:
             stored_data = FormulaDAO.get_calculated_data(month, year, latest=False)
             if stored_data:
                 # Find this employee's data
@@ -670,7 +676,7 @@ class FormulaService:
                 # Employee not found in stored data, calculate fresh
         
         # 1. Calculate TICKET_POINT
-        ticket_data = FormulaService.calculate_ticket_point(employee_id, month)
+        ticket_data = FormulaService.calculate_ticket_point(employee_id, month, project_id=project_id)
         ticket_point = ticket_data.get("ticket_point", 0.0)
         
         # 2. Calculate LOGWORK_POINT
@@ -738,8 +744,9 @@ class FormulaService:
         month: int,
         employeeuuid: str = None,
         status_id: str = None,
+        project_id: str = None,
     ) -> int:
-        """Count tickets by month with optional employee and status filters."""
+        """Count tickets by month with optional employee, status, and project filters."""
         ticket_status_id = None
         if status_id:
             status = TicketStatusDAO.get_by_status_id(status_id)
@@ -752,6 +759,7 @@ class FormulaService:
             employee_id=employeeuuid,
             ticket_status_id=ticket_status_id,
             active_only=True,
+            project_id=project_id,
         )
 
     @staticmethod
@@ -773,15 +781,15 @@ class FormulaService:
         month_strs = [str(m).zfill(2) for m in months]
         year_str = str(datetime.now().year)
 
-        # --- Ticket status counts ---
+        # --- Ticket status counts (distinct by ticket_id) ---
         all_statuses = TicketStatusDAO.get_all()
         status_uuid_map = {s.status_id: str(s.id) for s in all_statuses}
 
-        total_tickets = TicketDAO.count_by_months_active(months, project_id=project_id)
+        total_tickets = TicketDAO.count_distinct_by_months_active(months, project_id=project_id)
 
         def _status_count(status_code: str) -> int:
             sid = status_uuid_map.get(status_code)
-            return TicketDAO.count_by_months_active(months, ticket_status_id=sid, project_id=project_id) if sid else 0
+            return TicketDAO.count_distinct_by_months_active(months, ticket_status_id=sid, project_id=project_id) if sid else 0
 
         total_tickets_closed = _status_count("CLOSED")
         total_tickets_inqa = _status_count("IN_QA")
@@ -790,7 +798,7 @@ class FormulaService:
         # Status overview for donut chart
         status_overview = []
         for s in all_statuses:
-            count = TicketDAO.count_by_months_active(months, ticket_status_id=str(s.id), project_id=project_id)
+            count = TicketDAO.count_distinct_by_months_active(months, ticket_status_id=str(s.id), project_id=project_id)
             if count > 0:
                 status_overview.append({
                     "status": s.status_id,
@@ -801,11 +809,13 @@ class FormulaService:
 
         # --- Closed tickets by role per month (bar + line charts) ---
         closed_status = TicketStatusDAO.get_by_status_id("CLOSED")
+        eqa_role = RoleDAO.get_by_role_id("EQA")
+        iqa_role = RoleDAO.get_by_role_id("IQA")
         role_map = {
             "developers_closed": RoleDAO.get_by_role_id("DEV"),
             "ba_closed": RoleDAO.get_by_role_id("BA"),
-            "eqa_closed": RoleDAO.get_by_role_id("EQA"),
-            "iqa_closed": RoleDAO.get_by_role_id("IQA"),
+            "eqa_closed": eqa_role,
+            "iqa_closed": iqa_role,
         }
         role_uuid_map = {
             key: (str(role.id) if role else None)
@@ -817,6 +827,7 @@ class FormulaService:
 
         for month in months:
             month_counters = {k: 0 for k in role_uuid_map}
+            distinct_closed_ids: set = set()
 
             if closed_status:
                 closed_tickets = TicketDAO.get_by_month_status_active(
@@ -825,6 +836,7 @@ class FormulaService:
                     project_id=project_id,
                 )
                 for ticket in closed_tickets:
+                    distinct_closed_ids.add(ticket.ticket_id)
                     ticket_role_ids = {str(rid) for rid in (ticket.role_ids or [])}
                     for key, role_uuid in role_uuid_map.items():
                         if role_uuid and role_uuid in ticket_role_ids:
@@ -835,7 +847,7 @@ class FormulaService:
 
             total_trend.append({
                 "month": month,
-                "total_closed": sum(month_counters.values()),
+                "total_closed": len(distinct_closed_ids),
             })
 
         # --- Project overview table ---
@@ -853,28 +865,44 @@ class FormulaService:
             resource_allocated = len(members)
 
             role_groups: Dict[str, List[str]] = {}
+            role_uuid_sets: Dict[str, set] = {}
             for member in members:
                 role = member.role
                 if not role:
                     continue
                 role_key = str(role.role_id).upper()
-                role_groups.setdefault(role_key, []).append(str(member.user_id))
+                merged_key = "QA" if role_key in ("IQA", "EQA") else role_key
+                role_groups.setdefault(merged_key, []).append(str(member.user_id))
+                role_uuid_sets.setdefault(merged_key, set()).add(str(role.id))
+
+            # For the QA group, always include both IQA and EQA role UUIDs so that
+            # shadow workers logging tickets under the other QA sub-role are counted.
+            if "QA" in role_uuid_sets:
+                if eqa_role:
+                    role_uuid_sets["QA"].add(str(eqa_role.id))
+                if iqa_role:
+                    role_uuid_sets["QA"].add(str(iqa_role.id))
+
+            project_tickets = Ticket.query.filter(
+                Ticket.project_id == str(proj.id),
+                Ticket.month.in_(months),
+            ).all()
 
             roles_data = []
             for role_key, emp_ids in role_groups.items():
-                total_assigned = TicketDAO.count_by_project_employees_months(
-                    project_id=str(proj.id),
-                    employee_ids=emp_ids,
-                    months=months,
+                role_uuids = role_uuid_sets.get(role_key, set())
+
+                total_assigned = sum(
+                    1 for t in project_tickets
+                    if role_uuids & {str(rid) for rid in (t.role_ids or [])}
                 )
 
                 completed = 0
                 if closed_status_uuid:
-                    completed = TicketDAO.count_by_project_employees_months(
-                        project_id=str(proj.id),
-                        employee_ids=emp_ids,
-                        months=months,
-                        ticket_status_id=closed_status_uuid,
+                    completed = sum(
+                        1 for t in project_tickets
+                        if role_uuids & {str(rid) for rid in (t.role_ids or [])}
+                        and str(t.ticket_status_id) == closed_status_uuid
                     )
 
                 completion = (completed / total_assigned * 100) if total_assigned > 0 else 0
@@ -951,6 +979,7 @@ class FormulaService:
         year: int = None,
         employeeuuid: str = None,
         latest: bool = False,
+        project_id: str = None,
     ) -> Tuple[List[Dict[str, Any]], float, float, float, float]:
         """Calculate all points for all employees (or filtered by employeeuuid)
         
@@ -960,6 +989,7 @@ class FormulaService:
             employeeuuid: Filter by employee UUID (optional)
             latest: If True, recalculate with that month's params.
                    If False, fetch from stored calculated data in DB.
+            project_id: Optional project UUID to filter tickets by
             
         Returns:
             Tuple of:
@@ -978,14 +1008,16 @@ class FormulaService:
         active_non_admin_ids = {
             str(emp.id) for emp in EmployeeDAO.get_all_active_non_admin()
         }
+        logwork_user_ids = FormulaService._get_logwork_user_ids_by_month(month_str)
+        valid_employee_ids = active_non_admin_ids | logwork_user_ids
         
-        # Try to fetch from stored data if latest=False
-        if not latest:
+        # Try to fetch from stored data if latest=False (skip when project filter is active)
+        if not latest and not project_id:
             stored_data = FormulaDAO.get_calculated_data(month, year, latest=False)
             if stored_data:
                 stored_data = [
                     emp for emp in stored_data
-                    if str(emp.get("employee_id")) in active_non_admin_ids
+                    if str(emp.get("employee_id")) in valid_employee_ids
                 ]
                 # Filter by employeeuuid if provided
                 if employeeuuid:
@@ -1005,7 +1037,13 @@ class FormulaService:
         
         # Need to calculate fresh
         # Always compute with full team context so billable distribution is consistent.
-        employees = EmployeeDAO.get_all_active_non_admin()
+        # Include inactive employees who still have logwork data for this month.
+        employees = list(EmployeeDAO.get_all_active_non_admin())
+        active_ids = {str(emp.id) for emp in employees}
+        for uid in logwork_user_ids - active_ids:
+            emp = EmployeeDAO.get_by_id(uid)
+            if emp and (emp.authorize_role or "").upper() != "ADMIN":
+                employees.append(emp)
         
         results = []
         total_team_points = 0.0
@@ -1026,7 +1064,8 @@ class FormulaService:
                 employee_id=str(employee.id),
                 month=month,
                 year=year,
-                latest=True  # Always calculate fresh for each employee
+                latest=True,  # Always calculate fresh for each employee
+                project_id=project_id,
             )
             
             # Add employee info
@@ -1077,12 +1116,22 @@ class FormulaService:
         if employeeuuid:
             employeeuuid_str = str(employeeuuid)
             results = [emp for emp in results if str(emp.get("employee_id")) == employeeuuid_str]
+
+        # When filtering by project, only keep employees who have tickets in that project
+        if project_id:
+            project_employee_ids = {
+                str(t.employee_id) for t in Ticket.query.filter(
+                    Ticket.project_id == project_id,
+                    Ticket.month == month,
+                ).all()
+            }
+            results = [emp for emp in results if str(emp.get("employee_id")) in project_employee_ids]
         
         # Sort by ticket_point descending
         results.sort(key=lambda x: x["ticket_point"], reverse=True)
         
-        # Save to DB if latest=True (recalculate)
-        if latest:
+        # Save to DB if latest=True (recalculate) — skip when project filter is active
+        if latest and not project_id:
             FormulaDAO.save_calculated_data(month, year, results)
         
         average_billable_point, total_billable_point = FormulaService._calculate_billable_metrics(results, month_str)

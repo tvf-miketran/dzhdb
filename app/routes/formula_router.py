@@ -368,6 +368,7 @@ def calculate_points_get():
     months = parse_int_list_param(request.args.get("month"))
     year = request.args.get("year", type=int)
     employeeuuid = request.args.get("employeeuuid")
+    project_id = request.args.get("project")
     latest = request.args.get("latest", type=lambda x: x.lower() == "true", default=True)
 
     # Default month filter to current month when not provided
@@ -385,6 +386,7 @@ def calculate_points_get():
     all_results = []
     monthly_average_billable_points = []
     monthly_total_billable_points = []
+    monthly_average_ees = []
     total_ticket_point = 0.0
     total_logwork_point = 0.0
     total_tickets_closed = 0
@@ -396,22 +398,26 @@ def calculate_points_get():
             month=month,
             year=year,
             employeeuuid=employeeuuid,
-            latest=latest
+            latest=latest,
+            project_id=project_id,
         )
 
         total_tickets_closed += FormulaService.count_tickets(
             month=month,
             employeeuuid=employeeuuid,
             status_id="CLOSED",
+            project_id=project_id,
         )
         total_tickets_inqa += FormulaService.count_tickets(
             month=month,
             employeeuuid=employeeuuid,
             status_id="IN_QA",
+            project_id=project_id,
         )
         total_tickets += FormulaService.count_tickets(
             month=month,
             employeeuuid=employeeuuid,
+            project_id=project_id,
         )
 
         # param = FormulaService.get_formula(month)["parameters"]
@@ -423,12 +429,17 @@ def calculate_points_get():
         all_results.extend(results)
         monthly_average_billable_points.append(average_billable_point)
         monthly_total_billable_points.append(total_billable_point)
+        monthly_average_ees.append(average_ee)
         total_ticket_point += monthly_ticket_point
         total_logwork_point += monthly_logwork_point
 
     average_billable_point = (
         sum(monthly_average_billable_points) / len(monthly_average_billable_points)
         if monthly_average_billable_points else 0.0
+    )
+    average_ee = (
+        sum(monthly_average_ees) / len(monthly_average_ees)
+        if monthly_average_ees else 0.0
     )
 
     total_billable_point = sum(monthly_total_billable_points) if monthly_total_billable_points else 0.0
@@ -492,7 +503,8 @@ def calculate_points_get():
             "total_tickets": total_tickets,
             "billable_standard": billable_standard,
             "logwork_standard": logwork_standard,
-            "average_ee":average_ee,
+            "average_ee": average_ee,
+            "total_current_member": FormulaService.get_active_employee_count(),
         }),
         message="Points calculated successfully"
     )
@@ -529,6 +541,7 @@ def calculate_employee_point(employee_id: str):
     months = parse_int_list_param(request.args.get("month"))
     raw_month = months
     year = request.args.get("year", type=int)
+    project_id = request.args.get("project")
     latest_raw = request.args.get("latest")
     if latest_raw is None or latest_raw == "":
         latest = True
@@ -620,7 +633,8 @@ def calculate_employee_point(employee_id: str):
             month=month,
             year=year,
             employeeuuid=str(employee.id),
-            latest=latest
+            latest=latest,
+            project_id=project_id,
         )
         all_results.extend(result)
         monthly_average_billable_points.append(average_billable_point)
