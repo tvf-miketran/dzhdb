@@ -763,8 +763,8 @@ class FormulaService:
         )
 
     @staticmethod
-    def get_closed_ticket_kpi(month_count: int = 1, project_id: str = None) -> Dict[str, Any]:
-        """Get closed-ticket KPI for the latest N months (1/3/6/9) with optional project filter.
+    def get_closed_ticket_kpi(months: List[int] = None, year: int = None, project_id: str = None) -> Dict[str, Any]:
+        """Get closed-ticket KPI for the given month(s) with optional project filter.
 
         Returns data for:
         - Ticket status totals (open, closed, in_qa, all)
@@ -772,14 +772,13 @@ class FormulaService:
         - Closed tickets by role per month (for bar + line charts)
         - Project overview table with per-role metrics
         """
-        month_count = int(month_count or 1)
-        if month_count not in (1, 3, 6, 9):
-            month_count = 1
+        if not months:
+            months = [datetime.now().month]
+        if year is None:
+            year = datetime.now().year
 
-        now_month = datetime.now().month
-        months = [((now_month - offset - 1) % 12) + 1 for offset in reversed(range(month_count))]
         month_strs = [str(m).zfill(2) for m in months]
-        year_str = str(datetime.now().year)
+        year_str = str(year)
 
         # --- Ticket status counts (distinct by ticket_id) ---
         all_statuses = TicketStatusDAO.get_all()
@@ -960,7 +959,8 @@ class FormulaService:
             })
 
         return {
-            "month": month_count,
+            "months": months,
+            "year": year,
 
             # 1) Bar chart – "Closed Tickets by Role"
             "closed_by_role_chart": {
