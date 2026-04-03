@@ -288,10 +288,12 @@ def add_param():
 @jwt_required()
 @admin_required
 def get_closed_ticket_kpi():
-    """Get closed-ticket KPI for latest 1/3/6/9 months with optional project filter.
+    """Get closed-ticket KPI with optional project filter.
 
     Query parameters:
-    - month: Number of months to look back (1, 3, 6, 9). Default is 1.
+    - month: Month number(s) (1-12) - supports single or comma-separated (e.g. month=2,3,4).
+             Defaults to current month when not provided.
+    - year: Year (optional, defaults to current year).
     - project: Project UUID to filter by (optional).
 
     Response includes:
@@ -300,17 +302,21 @@ def get_closed_ticket_kpi():
     - series / details: closed tickets by role per month (bar + line charts)
     - project_overview: per-project per-role table data
     """
-    month_count = request.args.get("month", default=1, type=int)
-    if month_count not in (1, 3, 6, 9):
+    months = parse_int_list_param(request.args.get("month"))
+    year = request.args.get("year", type=int)
+    project_id = request.args.get("project")
+
+    if not months:
+        months = [datetime.now().month]
+
+    if any(m < 1 or m > 12 for m in months):
         return jsonify({
             "success": False,
-            "message": "month must be one of 1, 3, 6, or 9",
+            "message": "month must be between 1 and 12",
             "errors": None
         }), 400
 
-    project_id = request.args.get("project")
-
-    data = FormulaService.get_closed_ticket_kpi(month_count, project_id=project_id)
+    data = FormulaService.get_closed_ticket_kpi(months, year=year, project_id=project_id)
     return ApiResponse.success(
         data=_round_floats(data),
         message="Closed ticket KPI retrieved successfully"
