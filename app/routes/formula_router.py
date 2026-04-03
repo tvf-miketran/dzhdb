@@ -406,18 +406,15 @@ def calculate_points_get():
             month=month,
             employeeuuid=employeeuuid,
             status_id="CLOSED",
-            project_id=project_id,
         )
         total_tickets_inqa += FormulaService.count_tickets(
             month=month,
             employeeuuid=employeeuuid,
             status_id="IN_QA",
-            project_id=project_id,
         )
         total_tickets += FormulaService.count_tickets(
             month=month,
             employeeuuid=employeeuuid,
-            project_id=project_id,
         )
 
         # param = FormulaService.get_formula(month)["parameters"]
@@ -444,6 +441,7 @@ def calculate_points_get():
 
     total_billable_point = sum(monthly_total_billable_points) if monthly_total_billable_points else 0.0
     logwork_standard = FormulaService.get_logwork_standard_total(months)
+
     billable_standard = FormulaService.get_billable_standard_total(months)
     
     # If multiple months, aggregate results per employee (1 record per employee)

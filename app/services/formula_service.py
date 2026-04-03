@@ -888,6 +888,34 @@ class FormulaService:
                 Ticket.month.in_(months),
             ).all()
 
+            # Discover roles from tickets that aren't represented in project members
+            all_covered_uuids: set = set()
+            for uuids in role_uuid_sets.values():
+                all_covered_uuids |= uuids
+
+            from app.models.role import Role as RoleModel
+            for ticket in project_tickets:
+                for rid in (ticket.role_ids or []):
+                    rid_str = str(rid)
+                    if rid_str not in all_covered_uuids:
+                        role_obj = RoleModel.query.get(rid_str)
+                        if role_obj:
+                            rk = str(role_obj.role_id).upper()
+                            mk = "QA" if rk in ("IQA", "EQA") else rk
+                            role_uuid_sets.setdefault(mk, set()).add(rid_str)
+                            if ticket.employee_id:
+                                emp_id_str = str(ticket.employee_id)
+                                if emp_id_str not in role_groups.get(mk, []):
+                                    role_groups.setdefault(mk, []).append(emp_id_str)
+                            all_covered_uuids.add(rid_str)
+
+            # Ensure newly-created QA group also has both IQA and EQA UUIDs
+            if "QA" in role_uuid_sets:
+                if eqa_role:
+                    role_uuid_sets["QA"].add(str(eqa_role.id))
+                if iqa_role:
+                    role_uuid_sets["QA"].add(str(iqa_role.id))
+
             roles_data = []
             for role_key, emp_ids in role_groups.items():
                 role_uuids = role_uuid_sets.get(role_key, set())
@@ -1059,13 +1087,13 @@ class FormulaService:
                 "email": employee.email,
             }
             
-            # Calculate all points
+            # Calculate all points using global data (project_id only filters which
+            # employees appear in results, it must not affect individual calculations)
             point_data = FormulaService.calculate_employee_all_points(
                 employee_id=str(employee.id),
                 month=month,
                 year=year,
-                latest=True,  # Always calculate fresh for each employee
-                project_id=project_id,
+                latest=True,
             )
             
             # Add employee info
@@ -1113,6 +1141,15 @@ class FormulaService:
         
         average_ee = FormulaService.calculate_average_team_ee(results, month)
 
+        # Compute global aggregate metrics BEFORE any filtering
+        average_billable_point, total_billable_point = FormulaService._calculate_billable_metrics(results, month_str)
+        total_ticket_point = FormulaService._calculate_total_ticket_point(results)
+        total_logwork_point = FormulaService._calculate_total_logwork_point(results)
+
+        # Save to DB before filtering (full team data)
+        if latest and not project_id:
+            FormulaDAO.save_calculated_data(month, year, results)
+
         if employeeuuid:
             employeeuuid_str = str(employeeuuid)
             results = [emp for emp in results if str(emp.get("employee_id")) == employeeuuid_str]
@@ -1129,14 +1166,6 @@ class FormulaService:
         
         # Sort by ticket_point descending
         results.sort(key=lambda x: x["ticket_point"], reverse=True)
-        
-        # Save to DB if latest=True (recalculate) — skip when project filter is active
-        if latest and not project_id:
-            FormulaDAO.save_calculated_data(month, year, results)
-        
-        average_billable_point, total_billable_point = FormulaService._calculate_billable_metrics(results, month_str)
-        total_ticket_point = FormulaService._calculate_total_ticket_point(results)
-        total_logwork_point = FormulaService._calculate_total_logwork_point(results)
 
         return results, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point, average_ee
     
