@@ -763,8 +763,8 @@ class FormulaService:
         )
 
     @staticmethod
-    def get_closed_ticket_kpi(months: List[int] = None, year: int = None, project_id: str = None) -> Dict[str, Any]:
-        """Get closed-ticket KPI for the given month(s) with optional project filter.
+    def get_closed_ticket_kpi(months: List[int] = None, year: int = None, project_id: str = None, ticket_type_id: str = None) -> Dict[str, Any]:
+        """Get closed-ticket KPI for the given month(s) with optional project / ticket-type filter.
 
         Returns data for:
         - Ticket status totals (open, closed, in_qa, all)
@@ -784,11 +784,11 @@ class FormulaService:
         all_statuses = TicketStatusDAO.get_all()
         status_uuid_map = {s.status_id: str(s.id) for s in all_statuses}
 
-        total_tickets = TicketDAO.count_distinct_by_months_active(months, project_id=project_id)
+        total_tickets = TicketDAO.count_distinct_by_months_active(months, project_id=project_id, ticket_type_id=ticket_type_id)
 
         def _status_count(status_code: str) -> int:
             sid = status_uuid_map.get(status_code)
-            return TicketDAO.count_distinct_by_months_active(months, ticket_status_id=sid, project_id=project_id) if sid else 0
+            return TicketDAO.count_distinct_by_months_active(months, ticket_status_id=sid, project_id=project_id, ticket_type_id=ticket_type_id) if sid else 0
 
         total_tickets_closed = _status_count("CLOSED")
         total_tickets_inqa = _status_count("IN_QA")
@@ -797,7 +797,7 @@ class FormulaService:
         # Status overview for donut chart
         status_overview = []
         for s in all_statuses:
-            count = TicketDAO.count_distinct_by_months_active(months, ticket_status_id=str(s.id), project_id=project_id)
+            count = TicketDAO.count_distinct_by_months_active(months, ticket_status_id=str(s.id), project_id=project_id, ticket_type_id=ticket_type_id)
             if count > 0:
                 status_overview.append({
                     "status": s.status_id,
@@ -833,6 +833,7 @@ class FormulaService:
                     month=month,
                     ticket_status_id=str(closed_status.id),
                     project_id=project_id,
+                    ticket_type_id=ticket_type_id,
                 )
                 for ticket in closed_tickets:
                     distinct_closed_ids.add(ticket.ticket_id)
@@ -882,10 +883,13 @@ class FormulaService:
                 if iqa_role:
                     role_uuid_sets["QA"].add(str(iqa_role.id))
 
-            project_tickets = Ticket.query.filter(
+            project_tickets_q = Ticket.query.filter(
                 Ticket.project_id == str(proj.id),
                 Ticket.month.in_(months),
-            ).all()
+            )
+            if ticket_type_id:
+                project_tickets_q = project_tickets_q.filter(Ticket.ticket_type_id == ticket_type_id)
+            project_tickets = project_tickets_q.all()
 
             # Discover roles from tickets that aren't represented in project members
             all_covered_uuids: set = set()
