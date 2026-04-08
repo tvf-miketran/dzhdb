@@ -1,13 +1,111 @@
 
-from sqlalchemy import asc, desc, and_
+from sqlalchemy import asc, desc, and_, or_
 from sqlalchemy.orm import joinedload
 from app.models.ticket import Ticket
 from app.models.employee import Employee
+from app.models.project import Project
 from app import db
 from typing import Optional, List
 
 
 class TicketDAO:
+
+    @staticmethod
+    def _build_filtered_query(
+        project_id: Optional[List[str]] = None,
+        employee_id: Optional[List[str]] = None,
+        ticket_type_id: Optional[List[str]] = None,
+        ticket_status_id: Optional[List[str]] = None,
+        week: Optional[List[int]] = None,
+        month: Optional[List[int]] = None,
+        search: Optional[str] = None,
+        include_employee_search: bool = True,
+    ):
+        """Build filtered ticket query with role-specific search fields."""
+        query = Ticket.query.options(
+            joinedload(Ticket.project),
+            joinedload(Ticket.employee),
+            joinedload(Ticket.ticket_type),
+            joinedload(Ticket.ticket_status)
+        )
+
+        # Filter by project(s) - support both single and multiple values
+        if project_id:
+            if len(project_id) == 1:
+                query = query.filter(Ticket.project_id == project_id[0])
+            else:
+                query = query.filter(Ticket.project_id.in_(project_id))
+
+        # Filter by employee(s) - support both single and multiple values
+        if employee_id:
+            if len(employee_id) == 1:
+                query = query.filter(Ticket.employee_id == employee_id[0])
+            else:
+                query = query.filter(Ticket.employee_id.in_(employee_id))
+
+        # Filter by ticket type(s) - support both single and multiple values
+        if ticket_type_id:
+            if len(ticket_type_id) == 1:
+                query = query.filter(Ticket.ticket_type_id == ticket_type_id[0])
+            else:
+                query = query.filter(Ticket.ticket_type_id.in_(ticket_type_id))
+
+        # Filter by ticket status(es) - support both single and multiple values
+        if ticket_status_id:
+            if len(ticket_status_id) == 1:
+                query = query.filter(Ticket.ticket_status_id == ticket_status_id[0])
+            else:
+                query = query.filter(Ticket.ticket_status_id.in_(ticket_status_id))
+
+        # Filter by week(s) - support both single and multiple values
+        if week is not None and len(week) > 0:
+            if len(week) == 1:
+                query = query.filter(Ticket.week == week[0])
+            else:
+                query = query.filter(Ticket.week.in_(week))
+
+        # Filter by month(s) - support both single and multiple values
+        if month is not None and len(month) > 0:
+            if len(month) == 1:
+                query = query.filter(Ticket.month == month[0])
+            else:
+                query = query.filter(Ticket.month.in_(month))
+
+        # Role-specific search behavior by endpoint:
+        # - Admin route: ticket + project + employee fields
+        # - My route: ticket_id + project_id only (no employee fields)
+        if search:
+            search_pattern = f"%{search}%"
+
+            query = query.join(Ticket.project)
+
+            search_conditions = [
+                Ticket.ticket_id.ilike(search_pattern),
+                Project.project_id.ilike(search_pattern),
+            ]
+
+            if include_employee_search:
+                query = query.outerjoin(Ticket.employee)
+                search_conditions.extend([
+                    Ticket.ticket_link.ilike(search_pattern),
+                    Project.name.ilike(search_pattern),
+                    Employee.employeeId.ilike(search_pattern),
+                    Employee.en_full_name.ilike(search_pattern),
+                    Employee.vn_full_name.ilike(search_pattern),
+                    Employee.email.ilike(search_pattern),
+                ])
+
+            query = query.filter(or_(*search_conditions))
+
+        return query
+
+    @staticmethod
+    def _apply_sorting(query, sort_by: str = "created_at", sort_order: str = "desc"):
+        """Apply ticket sorting to query."""
+        sort_column = getattr(Ticket, sort_by, Ticket.created_at)
+        if sort_order.lower() == "asc":
+            return query.order_by(asc(sort_column))
+        return query.order_by(desc(sort_column))
 
     # ---------- READ ----------
     @staticmethod
@@ -266,7 +364,7 @@ class TicketDAO:
         sort_by: str = "created_at",
         sort_order: str = "desc"
     ):
-        """Get filtered and sorted tickets with pagination
+        """Get filtered and sorted tickets with pagination (Admin search scope).
         
         Args:
             project_id: List of project UUIDs or single project UUID (can be comma-separated string or list)
@@ -276,73 +374,98 @@ class TicketDAO:
             week: List of week numbers or single week number
             month: List of month numbers or single month number
         """
-        query = Ticket.query.options(
-            joinedload(Ticket.project),
-            joinedload(Ticket.employee),
-            joinedload(Ticket.ticket_type),
-            joinedload(Ticket.ticket_status)
+        query = TicketDAO._build_filtered_query(
+            project_id=project_id,
+            employee_id=employee_id,
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            include_employee_search=True
         )
-
-        # Filter by project(s) - support both single and multiple values
-        if project_id:
-            if len(project_id) == 1:
-                query = query.filter(Ticket.project_id == project_id[0])
-            else:
-                query = query.filter(Ticket.project_id.in_(project_id))
-
-        # Filter by employee(s) - support both single and multiple values
-        if employee_id:
-            if len(employee_id) == 1:
-                query = query.filter(Ticket.employee_id == employee_id[0])
-            else:
-                query = query.filter(Ticket.employee_id.in_(employee_id))
-
-        # Filter by ticket type(s) - support both single and multiple values
-        if ticket_type_id:
-            if len(ticket_type_id) == 1:
-                query = query.filter(Ticket.ticket_type_id == ticket_type_id[0])
-            else:
-                query = query.filter(Ticket.ticket_type_id.in_(ticket_type_id))
-
-        # Filter by ticket status(es) - support both single and multiple values
-        if ticket_status_id:
-            if len(ticket_status_id) == 1:
-                query = query.filter(Ticket.ticket_status_id == ticket_status_id[0])
-            else:
-                query = query.filter(Ticket.ticket_status_id.in_(ticket_status_id))
-
-        # Filter by week(s) - support both single and multiple values
-        if week is not None and len(week) > 0:
-            if len(week) == 1:
-                query = query.filter(Ticket.week == week[0])
-            else:
-                query = query.filter(Ticket.week.in_(week))
-
-        # Filter by month(s) - support both single and multiple values
-        if month is not None and len(month) > 0:
-            if len(month) == 1:
-                query = query.filter(Ticket.month == month[0])
-            else:
-                query = query.filter(Ticket.month.in_(month))
-
-        # Search in ticket_id, ticket_link
-        if search:
-            search_pattern = f"%{search}%"
-            query = query.filter(
-                db.or_(
-                    Ticket.ticket_id.ilike(search_pattern),
-                    Ticket.ticket_link.ilike(search_pattern)
-                )
-            )
-
-        # Apply sorting
-        sort_column = getattr(Ticket, sort_by, Ticket.created_at)
-        if sort_order.lower() == "asc":
-            query = query.order_by(asc(sort_column))
-        else:
-            query = query.order_by(desc(sort_column))
-
+        query = TicketDAO._apply_sorting(query, sort_by=sort_by, sort_order=sort_order)
         return query.paginate(page=page, per_page=per_page, error_out=False)
+
+    @staticmethod
+    def get_my_filtered_sorted(
+        page: int = 1,
+        per_page: int = 10,
+        project_id: Optional[List[str]] = None,
+        employee_id: Optional[List[str]] = None,
+        ticket_type_id: Optional[List[str]] = None,
+        ticket_status_id: Optional[List[str]] = None,
+        week: Optional[List[int]] = None,
+        month: Optional[List[int]] = None,
+        search: Optional[str] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc"
+    ):
+        """Get filtered and sorted tickets with pagination (Member search scope)."""
+        query = TicketDAO._build_filtered_query(
+            project_id=project_id,
+            employee_id=employee_id,
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            include_employee_search=False
+        )
+        query = TicketDAO._apply_sorting(query, sort_by=sort_by, sort_order=sort_order)
+        return query.paginate(page=page, per_page=per_page, error_out=False)
+
+    @staticmethod
+    def get_all_filtered(
+        project_id: Optional[List[str]] = None,
+        employee_id: Optional[List[str]] = None,
+        ticket_type_id: Optional[List[str]] = None,
+        ticket_status_id: Optional[List[str]] = None,
+        week: Optional[List[int]] = None,
+        month: Optional[List[int]] = None,
+        search: Optional[str] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc"
+    ) -> List[Ticket]:
+        """Get all filtered tickets without pagination (Admin search scope)."""
+        query = TicketDAO._build_filtered_query(
+            project_id=project_id,
+            employee_id=employee_id,
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            include_employee_search=True
+        )
+        query = TicketDAO._apply_sorting(query, sort_by=sort_by, sort_order=sort_order)
+        return query.all()
+
+    @staticmethod
+    def get_my_filtered(
+        project_id: Optional[List[str]] = None,
+        employee_id: Optional[List[str]] = None,
+        ticket_type_id: Optional[List[str]] = None,
+        ticket_status_id: Optional[List[str]] = None,
+        week: Optional[List[int]] = None,
+        month: Optional[List[int]] = None,
+        search: Optional[str] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc"
+    ) -> List[Ticket]:
+        """Get all filtered tickets without pagination (Member search scope)."""
+        query = TicketDAO._build_filtered_query(
+            project_id=project_id,
+            employee_id=employee_id,
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            include_employee_search=False
+        )
+        query = TicketDAO._apply_sorting(query, sort_by=sort_by, sort_order=sort_order)
+        return query.all()
     
     # ---------- CREATE ----------
     @staticmethod

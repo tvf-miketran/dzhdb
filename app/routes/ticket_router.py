@@ -170,49 +170,19 @@ def get_all_tickets():
     
     # If no pagination, apply filters and return results
     if not page:
-        tickets = TicketService.get_all()
-        
-        # Apply filters
-        filtered_tickets = tickets
-        if project_id:
-            if len(project_id) == 1:
-                filtered_tickets = [t for t in filtered_tickets if str(t.project_id) == project_id[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if str(t.project_id) in project_id]
-        if employee_id:
-            if len(employee_id) == 1:
-                filtered_tickets = [t for t in filtered_tickets if str(t.employee_id) == employee_id[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if str(t.employee_id) in employee_id]
-        if ticket_type_id:
-            if len(ticket_type_id) == 1:
-                filtered_tickets = [t for t in filtered_tickets if str(t.ticket_type_id) == ticket_type_id[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if str(t.ticket_type_id) in ticket_type_id]
-        if ticket_status_id:
-            if len(ticket_status_id) == 1:
-                filtered_tickets = [t for t in filtered_tickets if str(t.ticket_status_id) == ticket_status_id[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if str(t.ticket_status_id) in ticket_status_id]
-        if week:
-            if len(week) == 1:
-                filtered_tickets = [t for t in filtered_tickets if t.week == week[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if t.week in week]
-        if month:
-            if len(month) == 1:
-                filtered_tickets = [t for t in filtered_tickets if t.month == month[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if t.month in month]
-        if search:
-            search_lower = search.lower()
-            filtered_tickets = [
-                t for t in filtered_tickets 
-                if search_lower in t.ticket_id.lower() or 
-                (t.ticket_link and search_lower in t.ticket_link.lower())
-            ]
-        
-        data = [TicketService._to_dict(ticket) for ticket in filtered_tickets]
+        tickets = TicketService.get_all_filtered(
+            project_id=project_id,
+            employee_id=employee_id,
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+        data = [TicketService._to_dict(ticket) for ticket in tickets]
         return ApiResponse.success(
             data=data, 
             message=f"Tickets retrieved successfully (total: {len(data)})"
@@ -294,53 +264,26 @@ def get_my_tickets():
     
     # If no pagination, apply filters and return results
     if not page:
-        tickets = TicketService.get_all()
-        
-        # Filter by current user first
-        filtered_tickets = [t for t in tickets if str(t.employee_id) == current_user_uuid]
-        
-        # Apply filters
-        if project_id:
-            if len(project_id) == 1:
-                filtered_tickets = [t for t in filtered_tickets if str(t.project_id) == project_id[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if str(t.project_id) in project_id]
-        if ticket_type_id:
-            if len(ticket_type_id) == 1:
-                filtered_tickets = [t for t in filtered_tickets if str(t.ticket_type_id) == ticket_type_id[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if str(t.ticket_type_id) in ticket_type_id]
-        if ticket_status_id:
-            if len(ticket_status_id) == 1:
-                filtered_tickets = [t for t in filtered_tickets if str(t.ticket_status_id) == ticket_status_id[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if str(t.ticket_status_id) in ticket_status_id]
-        if week:
-            if len(week) == 1:
-                filtered_tickets = [t for t in filtered_tickets if t.week == week[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if t.week in week]
-        if month:
-            if len(month) == 1:
-                filtered_tickets = [t for t in filtered_tickets if t.month == month[0]]
-            else:
-                filtered_tickets = [t for t in filtered_tickets if t.month in month]
-        if search:
-            search_lower = search.lower()
-            filtered_tickets = [
-                t for t in filtered_tickets 
-                if search_lower in t.ticket_id.lower() or 
-                (t.ticket_link and search_lower in t.ticket_link.lower())
-            ]
-        
-        data = [TicketService._to_dict(ticket) for ticket in filtered_tickets]
+        tickets = TicketService.get_my_filtered(
+            project_id=project_id,
+            employee_id=[current_user_uuid],
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+        data = [TicketService._to_dict(ticket) for ticket in tickets]
         return ApiResponse.success(
             data=data, 
             message=f"My tickets retrieved successfully (total: {len(data)})"
         )
     
     # Get filtered and sorted paginated results (with current user filter)
-    result = TicketService.get_all_filtered_sorted(
+    result = TicketService.get_my_filtered_sorted(
         page=page,
         per_page=per_page,
         project_id=project_id,

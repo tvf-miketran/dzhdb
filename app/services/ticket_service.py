@@ -190,6 +190,130 @@ class TicketService:
                 "sort_order": sort_order
             }
         }
+
+    @staticmethod
+    def get_my_filtered_sorted(
+        page: int = 1,
+        per_page: int = 10,
+        project_id: Optional[List[str]] = None,
+        employee_id: Optional[List[str]] = None,
+        ticket_type_id: Optional[List[str]] = None,
+        ticket_status_id: Optional[List[str]] = None,
+        week: Optional[List[int]] = None,
+        month: Optional[List[int]] = None,
+        search: Optional[str] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc"
+    ) -> Dict[str, Any]:
+        """Get filtered and sorted tickets for member scope with pagination."""
+
+        valid_sort_fields = ["created_at", "updated_at", "ticket_id"]
+        if sort_by not in valid_sort_fields:
+            sort_by = "created_at"
+
+        if sort_order.lower() not in ["asc", "desc"]:
+            sort_order = "desc"
+
+        pagination = TicketDAO.get_my_filtered_sorted(
+            page=page,
+            per_page=per_page,
+            project_id=project_id,
+            employee_id=employee_id,
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+        return {
+            "items": [TicketService._to_dict(ticket) for ticket in pagination.items],
+            "total": pagination.total,
+            "page": pagination.page,
+            "per_page": pagination.per_page,
+            "pages": pagination.pages,
+            "has_next": pagination.has_next,
+            "has_prev": pagination.has_prev,
+            "filters": {
+                "project_id": project_id,
+                "employee_id": employee_id,
+                "ticket_type_id": ticket_type_id,
+                "ticket_status_id": ticket_status_id,
+                "week": week,
+                "month": month,
+                "search": search,
+                "sort_by": sort_by,
+                "sort_order": sort_order
+            }
+        }
+
+    @staticmethod
+    def get_all_filtered(
+        project_id: Optional[List[str]] = None,
+        employee_id: Optional[List[str]] = None,
+        ticket_type_id: Optional[List[str]] = None,
+        ticket_status_id: Optional[List[str]] = None,
+        week: Optional[List[int]] = None,
+        month: Optional[List[int]] = None,
+        search: Optional[str] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc"
+    ) -> List[Ticket]:
+        """Get all filtered tickets for admin scope without pagination."""
+
+        valid_sort_fields = ["created_at", "updated_at", "ticket_id"]
+        if sort_by not in valid_sort_fields:
+            sort_by = "created_at"
+
+        if sort_order.lower() not in ["asc", "desc"]:
+            sort_order = "desc"
+
+        return TicketDAO.get_all_filtered(
+            project_id=project_id,
+            employee_id=employee_id,
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+    @staticmethod
+    def get_my_filtered(
+        project_id: Optional[List[str]] = None,
+        employee_id: Optional[List[str]] = None,
+        ticket_type_id: Optional[List[str]] = None,
+        ticket_status_id: Optional[List[str]] = None,
+        week: Optional[List[int]] = None,
+        month: Optional[List[int]] = None,
+        search: Optional[str] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc"
+    ) -> List[Ticket]:
+        """Get all filtered tickets for member scope without pagination."""
+
+        valid_sort_fields = ["created_at", "updated_at", "ticket_id"]
+        if sort_by not in valid_sort_fields:
+            sort_by = "created_at"
+
+        if sort_order.lower() not in ["asc", "desc"]:
+            sort_order = "desc"
+
+        return TicketDAO.get_my_filtered(
+            project_id=project_id,
+            employee_id=employee_id,
+            ticket_type_id=ticket_type_id,
+            ticket_status_id=ticket_status_id,
+            week=week,
+            month=month,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
     
     @staticmethod
     def get_by_id(id: str) -> Optional[Ticket]:
