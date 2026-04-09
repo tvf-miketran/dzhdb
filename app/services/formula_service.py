@@ -20,6 +20,8 @@ class FormulaService:
     # Known dynamic variables that are computed at runtime
     # These remain fixed in code - need new methods to add new dynamic variables
     # Format: "VARIABLE_NAME": "description"
+    _PERFORMANCE_ORDER = {"Excellent": 0, "Good": 1, "Bad": 2}
+
     DYNAMIC_VARIABLES = {
         "TASK_COUNT": "Number of completed tasks",
         "BUG_COUNT": "Number of completed bugs",
@@ -763,7 +765,7 @@ class FormulaService:
         )
 
     @staticmethod
-    def get_closed_ticket_kpi(months: List[int] = None, year: int = None, project_id: str = None, ticket_type_id: str = None) -> Dict[str, Any]:
+    def get_closed_ticket_kpi(months: List[int] = None, year: int = None, project_id: str = None, ticket_type_ids: List[str] = None) -> Dict[str, Any]:
         """Get closed-ticket KPI for the given month(s) with optional project / ticket-type filter.
 
         Returns data for:
@@ -784,11 +786,11 @@ class FormulaService:
         all_statuses = TicketStatusDAO.get_all()
         status_uuid_map = {s.status_id: str(s.id) for s in all_statuses}
 
-        total_tickets = TicketDAO.count_distinct_by_months_active(months, project_id=project_id, ticket_type_id=ticket_type_id)
+        total_tickets = TicketDAO.count_distinct_by_months_active(months, project_id=project_id, ticket_type_ids=ticket_type_ids)
 
         def _status_count(status_code: str) -> int:
             sid = status_uuid_map.get(status_code)
-            return TicketDAO.count_distinct_by_months_active(months, ticket_status_id=sid, project_id=project_id, ticket_type_id=ticket_type_id) if sid else 0
+            return TicketDAO.count_distinct_by_months_active(months, ticket_status_id=sid, project_id=project_id, ticket_type_ids=ticket_type_ids) if sid else 0
 
         total_tickets_closed = _status_count("CLOSED")
         total_tickets_inqa = _status_count("IN_QA")
@@ -797,7 +799,7 @@ class FormulaService:
         # Status overview for donut chart
         status_overview = []
         for s in all_statuses:
-            count = TicketDAO.count_distinct_by_months_active(months, ticket_status_id=str(s.id), project_id=project_id, ticket_type_id=ticket_type_id)
+            count = TicketDAO.count_distinct_by_months_active(months, ticket_status_id=str(s.id), project_id=project_id, ticket_type_ids=ticket_type_ids)
             if count > 0:
                 status_overview.append({
                     "status": s.status_id,
@@ -833,7 +835,7 @@ class FormulaService:
                     month=month,
                     ticket_status_id=str(closed_status.id),
                     project_id=project_id,
-                    ticket_type_id=ticket_type_id,
+                    ticket_type_ids=ticket_type_ids,
                 )
                 for ticket in closed_tickets:
                     distinct_closed_ids.add(ticket.ticket_id)
@@ -887,8 +889,8 @@ class FormulaService:
                 Ticket.project_id == str(proj.id),
                 Ticket.month.in_(months),
             )
-            if ticket_type_id:
-                project_tickets_q = project_tickets_q.filter(Ticket.ticket_type_id == ticket_type_id)
+            if ticket_type_ids:
+                project_tickets_q = project_tickets_q.filter(Ticket.ticket_type_id.in_(ticket_type_ids))
             project_tickets = project_tickets_q.all()
 
             # Discover roles from tickets that aren't represented in project members
@@ -1065,7 +1067,14 @@ class FormulaService:
                 total_ticket_point = FormulaService._calculate_total_ticket_point(stored_data)
                 total_logwork_point = FormulaService._calculate_total_logwork_point(stored_data)
                 average_ee = FormulaService.calculate_average_team_ee(stored_data, month)
-                return stored_data, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point , average_ee
+                stored_data = [emp for emp in stored_data if emp.get("task_count", 0) > 0]
+                stored_data.sort(key=lambda x: (
+                    FormulaService._PERFORMANCE_ORDER.get(
+                        x.get("member_performance", {}).get("performance_level", "Bad"), 99
+                    ),
+                    -x.get("ticket_point", 0)
+                ))
+                return stored_data, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point, average_ee
         
         # Need to calculate fresh
         # Always compute with full team context so billable distribution is consistent.
@@ -1168,8 +1177,15 @@ class FormulaService:
             }
             results = [emp for emp in results if str(emp.get("employee_id")) in project_employee_ids]
         
-        # Sort by ticket_point descending
-        results.sort(key=lambda x: x["ticket_point"], reverse=True)
+        if not employeeuuid:
+            results = [emp for emp in results if emp.get("task_count", 0) > 0]
+
+        results.sort(key=lambda x: (
+            FormulaService._PERFORMANCE_ORDER.get(
+                x.get("member_performance", {}).get("performance_level", "Bad"), 99
+            ),
+            -x.get("ticket_point", 0)
+        ))
 
         return results, average_billable_point, total_billable_point, total_ticket_point, total_logwork_point, average_ee
     

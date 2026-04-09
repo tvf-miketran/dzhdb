@@ -265,7 +265,7 @@ class TicketDAO:
         months: List[int],
         ticket_status_id: Optional[str] = None,
         project_id: Optional[str] = None,
-        ticket_type_id: Optional[str] = None,
+        ticket_type_ids: Optional[List[str]] = None,
     ) -> int:
         """Count distinct ticket_id values across months for active non-admin employees.
 
@@ -281,8 +281,8 @@ class TicketDAO:
             query = query.filter(Ticket.ticket_status_id == ticket_status_id)
         if project_id:
             query = query.filter(Ticket.project_id == project_id)
-        if ticket_type_id:
-            query = query.filter(Ticket.ticket_type_id == ticket_type_id)
+        if ticket_type_ids:
+            query = query.filter(Ticket.ticket_type_id.in_(ticket_type_ids))
         query = query.filter(
             Ticket.employee.has(
                 and_(
@@ -334,7 +334,7 @@ class TicketDAO:
         month: int,
         ticket_status_id: str,
         project_id: Optional[str] = None,
-        ticket_type_id: Optional[str] = None,
+        ticket_type_ids: Optional[List[str]] = None,
     ) -> List[Ticket]:
         """Get tickets by month and status for active non-admin employees, with optional project/type filter."""
         query = (
@@ -352,8 +352,8 @@ class TicketDAO:
         )
         if project_id:
             query = query.filter(Ticket.project_id == project_id)
-        if ticket_type_id:
-            query = query.filter(Ticket.ticket_type_id == ticket_type_id)
+        if ticket_type_ids:
+            query = query.filter(Ticket.ticket_type_id.in_(ticket_type_ids))
         return query.all()
 
     @staticmethod
