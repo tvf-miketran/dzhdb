@@ -724,6 +724,22 @@ class FormulaService:
         return {str(log.user_id) for log in logwork_records}
 
     @staticmethod
+    def _get_ticket_employee_ids_by_month(month: int, project_id: str = None) -> Set[str]:
+        """Get employee IDs that have any ticket in a specific month.
+
+        If project_id is provided, only include tickets in that project.
+        """
+        query = Ticket.query.filter(Ticket.month == month)
+        if project_id:
+            query = query.filter(Ticket.project_id == project_id)
+
+        return {
+            str(ticket.employee_id)
+            for ticket in query.all()
+            if ticket.employee_id is not None
+        }
+
+    @staticmethod
     def _calculate_billable_metrics(
         data: List[Dict[str, Any]],
         month_str: str
@@ -1061,6 +1077,7 @@ class FormulaService:
         }
         logwork_user_ids = FormulaService._get_logwork_user_ids_by_month(month_str)
         valid_employee_ids = active_non_admin_ids | logwork_user_ids
+        ticket_employee_ids = FormulaService._get_ticket_employee_ids_by_month(month, project_id)
         
         # Try to fetch from stored data if latest=False (skip when project filter is active)
         if not latest and not project_id:
@@ -1084,7 +1101,10 @@ class FormulaService:
                 total_ticket_point = FormulaService._calculate_total_ticket_point(stored_data)
                 total_logwork_point = FormulaService._calculate_total_logwork_point(stored_data)
                 average_ee = FormulaService.calculate_average_team_ee(stored_data, month)
-                stored_data = [emp for emp in stored_data if emp.get("task_count", 0) > 0]
+                stored_data = [
+                    emp for emp in stored_data
+                    if str(emp.get("employee_id")) in ticket_employee_ids
+                ]
                 stored_data.sort(key=lambda x: (
                     FormulaService._PERFORMANCE_ORDER.get(
                         x.get("member_performance", {}).get("performance_level", "Bad"), 99
@@ -1186,16 +1206,10 @@ class FormulaService:
 
         # When filtering by project, only keep employees who have tickets in that project
         if project_id:
-            project_employee_ids = {
-                str(t.employee_id) for t in Ticket.query.filter(
-                    Ticket.project_id == project_id,
-                    Ticket.month == month,
-                ).all()
-            }
-            results = [emp for emp in results if str(emp.get("employee_id")) in project_employee_ids]
+            results = [emp for emp in results if str(emp.get("employee_id")) in ticket_employee_ids]
         
         if not employeeuuid:
-            results = [emp for emp in results if emp.get("task_count", 0) > 0]
+            results = [emp for emp in results if str(emp.get("employee_id")) in ticket_employee_ids]
 
         results.sort(key=lambda x: (
             FormulaService._PERFORMANCE_ORDER.get(
