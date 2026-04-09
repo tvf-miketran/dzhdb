@@ -1,5 +1,7 @@
 from typing import Optional, List, Dict, Any, Tuple
 from app.dao.logwork_dao import LogworkDAO
+from app.dao.formula_dao import FormulaDAO
+from app.dao.project_dao import ProjectDAO
 from app.models.logwork import Logwork
 from app.models.employee import Employee
 from app.requests.logwork_request import CreateLogworkRequest, UpdateLogworkRequest
@@ -7,6 +9,76 @@ from decimal import Decimal
 
 
 class LogworkService:
+
+    @staticmethod
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        """Safely convert value to float."""
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _get_standard_logwork_by_month(month: str) -> float:
+        """Get STANDARD_LOGWORK value for a month."""
+        try:
+            month_num = int(month)
+        except (TypeError, ValueError):
+            return 0.0
+
+        value = FormulaDAO.get_param("STANDARD_LOGWORK", month_num)
+        return LogworkService._safe_float(value, 0.0)
+
+    @staticmethod
+    def _get_total_ee_percent_by_user(user_id: str) -> float:
+        """Get total EE percent for a user across all project memberships."""
+        memberships = ProjectDAO.get_all_memberships_by_user(user_id)
+        return sum(
+            LogworkService._safe_float(membership.allocation_percent, 0.0)
+            for membership in memberships
+        )
+
+    @staticmethod
+    def _build_metrics(logwork: Logwork) -> Dict[str, Any]:
+        """Build status and estimate metrics for a logwork row."""
+        standard_logwork = LogworkService._get_standard_logwork_by_month(logwork.month)
+        total_ee_percent = LogworkService._get_total_ee_percent_by_user(str(logwork.user_id))
+        ee_ratio = total_ee_percent / 100.0
+
+        estimate_score = 0.0
+        denominator = standard_logwork * ee_ratio
+        if denominator > 0:
+            estimate_score = float(logwork.loghours) / denominator
+
+        return {
+            "standardLogworkInMonth": standard_logwork,
+            "totalEEPercent": total_ee_percent,
+            "estimateScore": round(estimate_score, 4),
+            "status": 1 if estimate_score >= 1 else 0,
+        }
+
+    @staticmethod
+    def to_dict_with_metrics(logwork: Logwork) -> Dict[str, Any]:
+        """Convert a logwork object to response dict with estimate metrics."""
+        data = LogworkService._to_dict(logwork)
+        data.update(LogworkService._build_metrics(logwork))
+        return data
+
+    @staticmethod
+    def to_list_with_metrics(logworks: List[Logwork]) -> Dict[str, Any]:
+        """Build response payload containing logworks with status and month standards."""
+        items = [LogworkService.to_dict_with_metrics(logwork) for logwork in logworks]
+
+        standard_by_month: Dict[str, float] = {}
+        for logwork in logworks:
+            month_key = str(logwork.month).zfill(2)
+            if month_key not in standard_by_month:
+                standard_by_month[month_key] = LogworkService._get_standard_logwork_by_month(month_key)
+
+        return {
+            "standardLogworkByMonth": standard_by_month,
+            "items": items,
+        }
     
     @staticmethod
     def get_all() -> List[Logwork]:
