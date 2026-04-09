@@ -193,6 +193,23 @@ class FormulaService:
         return EmployeeDAO.count_active_non_admin()
 
     @staticmethod
+    def get_employees_total_ee() -> list:
+        """Get all active non-admin employees with their total EE percent.
+
+        totalEE = sum of allocationPercent across all project memberships.
+        """
+        employees = EmployeeDAO.get_all_active_non_admin()
+        data = [
+            {
+                "enFullName": emp.en_full_name,
+                "totalEE": sum((pm.allocation_percent or 0) for pm in emp.project_members),
+            }
+            for emp in employees
+        ]
+        data.sort(key=lambda x: x["enFullName"] or "")
+        return data
+
+    @staticmethod
     def get_billable_standard_total(months: List[int]) -> float:
         """Get total billable standard across months.
 
