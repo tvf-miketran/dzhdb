@@ -36,7 +36,7 @@ def get_all_logworks():
     logworks = LogworkService.get_by_user_id_with_month_filter(
         str(user.id), months=months or None, quarter=quarter, year=year, sort_by=sort_by
     )
-    data = [LogworkService._to_dict(logwork) for logwork in logworks]
+    data = LogworkService.to_list_with_metrics(logworks)
 
     return ApiResponse.success(
         data=data,
@@ -67,7 +67,7 @@ def get_all_logworks_admin():
     logworks = LogworkService.get_all_with_filters(
         months=months or None, quarter=quarter, year=year, user_eng_name=user_eng_name, sort_by=sort_by
     )
-    data = [LogworkService._to_dict(logwork) for logwork in logworks]
+    data = LogworkService.to_list_with_metrics(logworks)
 
     return ApiResponse.success(
         data=data,
