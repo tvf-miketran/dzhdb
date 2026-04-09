@@ -6,7 +6,7 @@ from app.services.formula_service import FormulaService
 from app.responses import ApiResponse
 from app.utils.decorators import admin_required
 from app.dao.employee_dao import EmployeeDAO
-from app.utils.query_helpers import parse_int_list_param
+from app.utils.query_helpers import parse_int_list_param, parse_list_param
 from app.utils.round_float import _round_floats
 
 formula_bp = Blueprint("formula", __name__)
@@ -295,7 +295,7 @@ def get_closed_ticket_kpi():
              Defaults to current month when not provided.
     - year: Year (optional, defaults to current year).
     - project: Project UUID to filter by (optional).
-    - ticket_type_id: Ticket type UUID to filter by (optional).
+    - ticket_type_id: Ticket type UUID(s) to filter by, supports comma-separated (optional).
 
     Response includes:
     - total_tickets, total_tickets_open, total_tickets_closed, total_tickets_inqa
@@ -306,7 +306,7 @@ def get_closed_ticket_kpi():
     months = parse_int_list_param(request.args.get("month"))
     year = request.args.get("year", type=int)
     project_id = request.args.get("project")
-    ticket_type_id = request.args.get("ticket_type_id")
+    ticket_type_ids = parse_list_param(request.args.get("ticket_type_id"))
 
     if not months:
         months = [datetime.now().month]
@@ -318,7 +318,7 @@ def get_closed_ticket_kpi():
             "errors": None
         }), 400
 
-    data = FormulaService.get_closed_ticket_kpi(months, year=year, project_id=project_id, ticket_type_id=ticket_type_id)
+    data = FormulaService.get_closed_ticket_kpi(months, year=year, project_id=project_id, ticket_type_ids=ticket_type_ids)
     return ApiResponse.success(
         data=_round_floats(data),
         message="Closed ticket KPI retrieved successfully"
@@ -489,10 +489,13 @@ def calculate_points_get():
 
         all_results = list(employee_map.values())
 
-    # Sort results by employee English name (A-Z)
-    all_results.sort(
-        key=lambda x: (x.get("employee") or {}).get("en_full_name", "").lower()
-    )
+    _PERFORMANCE_ORDER = {"Excellent": 0, "Good": 1, "Bad": 2}
+    all_results.sort(key=lambda x: (
+        _PERFORMANCE_ORDER.get(
+            (x.get("member_performance") or {}).get("performance_level", "Bad"), 99
+        ),
+        -x.get("ticket_point", 0)
+    ))
     
     params = FormulaService.get_formula(month)["parameters"] #this return first month
     
