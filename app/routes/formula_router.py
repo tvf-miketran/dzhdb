@@ -325,6 +325,25 @@ def get_closed_ticket_kpi():
     )
 
 
+@formula_bp.route("/list-employees-ee", methods=["GET"])
+@jwt_required()
+def get_employees_total_ee():
+    """Get all active employees with their total EE (sum of allocationPercent).
+
+    Returns:
+    {
+        "success": true,
+        "data": [
+            {"enFullName": "Tony Nguyen", "totalEE": 60},
+            ...
+        ],
+        "message": "Employees EE retrieved successfully"
+    }
+    """
+    data = FormulaService.get_employees_total_ee()
+    return ApiResponse.success(data=data, message="Employees EE retrieved successfully")
+
+
 @formula_bp.route("/calculate", methods=["GET"])
 @jwt_required()
 @admin_required
