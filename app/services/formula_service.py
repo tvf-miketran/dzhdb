@@ -986,6 +986,7 @@ class FormulaService:
                     user_ids=emp_ids,
                     months=month_strs,
                     year=year_str,
+                    project_id=str(proj.id),
                 )
 
                 efficiency = (total_logged_hours / total_assigned) if total_assigned > 0 else 0

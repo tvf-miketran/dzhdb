@@ -6,20 +6,26 @@ from decimal import Decimal
 @dataclass
 class CreateLogworkRequest:
     user_id: str
+    project_id: str
     log_hours: Decimal
     month: str
     year: str = '2026'
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> Tuple[Optional["CreateLogworkRequest"], Optional[List[str]]]:
         """Parse and validate create logwork request"""
         errors = []
-        
+
         # Get user_id
         user_id = data.get("userId")
         if not user_id:
             errors.append("userId is required")
-        
+
+        # Get project_id
+        project_id = data.get("projectId")
+        if not project_id:
+            errors.append("projectId is required")
+
         # Get log_hours as number
         log_hours_raw = data.get("logHour")
         if log_hours_raw is None:
@@ -62,16 +68,23 @@ class CreateLogworkRequest:
         
         if errors:
             return None, errors
-        
-        return cls(user_id=user_id, log_hours=log_hours, month=month, year=year), None
+
+        return cls(
+            user_id=user_id,
+            project_id=project_id,
+            log_hours=log_hours,
+            month=month,
+            year=year,
+        ), None
 
 
 @dataclass
 class UpdateLogworkRequest:
+    project_id: Optional[str] = None
     log_hours: Optional[Decimal] = None
     month: Optional[str] = None
     year: Optional[str] = None
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> Tuple[Optional["UpdateLogworkRequest"], Optional[List[str]]]:
         """Parse and validate update logwork request"""
@@ -80,7 +93,10 @@ class UpdateLogworkRequest:
         log_hours = None
         month = None
         year = None
-        
+
+        # Optional project_id
+        project_id = data.get("projectId")
+
         # Validation for log_hours
         log_hours_raw = data.get("logHour")
         if log_hours_raw is not None:
@@ -90,7 +106,7 @@ class UpdateLogworkRequest:
                     errors.append("logHour must be greater than 0")
             except (ValueError, TypeError):
                 errors.append("logHour must be a valid number")
-        
+
         # Validation for month
         month_raw = data.get("month")
         if month_raw is not None:
@@ -104,7 +120,7 @@ class UpdateLogworkRequest:
                     month = str(month_int).zfill(2)
             except ValueError:
                 errors.append("month must be a numeric string (1-12)")
-        
+
         # Validation for year
         year_raw = data.get("year")
         if year_raw is not None:
@@ -117,8 +133,8 @@ class UpdateLogworkRequest:
                     year = str(year_int)
             except ValueError:
                 errors.append("year must be a numeric string")
-        
+
         if errors:
             return None, errors
-        
-        return cls(log_hours=log_hours, month=month, year=year), None
+
+        return cls(project_id=project_id, log_hours=log_hours, month=month, year=year), None

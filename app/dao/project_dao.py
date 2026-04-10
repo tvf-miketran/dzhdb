@@ -97,8 +97,13 @@ class ProjectDAO:
     
     @staticmethod
     def get_all_memberships_by_user(user_id: str) -> List[ProjectMember]:
-        """Get all project memberships for a user (across all projects)"""
-        return ProjectMember.query.filter_by(user_id=user_id).all()
+        """Get all project memberships for a user (across all projects), project eagerly loaded."""
+        return (
+            ProjectMember.query
+            .options(joinedload(ProjectMember.project))
+            .filter_by(user_id=user_id)
+            .all()
+        )
     
 
     # ---------- CREATE ----------

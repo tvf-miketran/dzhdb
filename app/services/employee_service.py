@@ -9,6 +9,41 @@ class EmployeeService:
     def get_all() -> List[Employee]:
         """Get all employees"""
         return EmployeeDAO.get_all()
+
+    @staticmethod
+    def get_all_members_with_projects(status: Optional[bool] = True) -> List[Dict[str, Any]]:
+        """Get all members with their project allocations for FE usage."""
+        employees = EmployeeDAO.get_all()
+        result: List[Dict[str, Any]] = []
+
+        for employee in employees:
+            if status is not None and employee.status != status:
+                continue
+
+            projects = []
+            for pm in employee.project_members:
+                projects.append({
+                    "projectId": str(pm.project_id) if pm.project_id else None,
+                    "projectName": pm.project.name if pm.project and hasattr(pm.project, 'name') else None,
+                    "projectKey": pm.project.project_key if pm.project and hasattr(pm.project, 'project_key') else None,
+                    "roleId": str(pm.role_id) if pm.role_id else None,
+                    "roleName": pm.role.name if pm.role and hasattr(pm.role, 'name') else None,
+                    "allocationPercent": pm.allocation_percent,
+                    "joinedAt": pm.joined_at.isoformat() if pm.joined_at else None,
+                })
+
+            result.append({
+                "id": str(employee.id),
+                "employeeId": employee.employeeId,
+                "email": employee.email,
+                "vnFullName": employee.vn_full_name,
+                "enFullName": employee.en_full_name,
+                "status": employee.status,
+                "projects": projects,
+            })
+
+        result.sort(key=lambda item: (item.get("enFullName") or "", item.get("employeeId") or ""))
+        return result
     
     @staticmethod
     def get_all_filtered_sorted(

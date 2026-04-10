@@ -19,6 +19,7 @@ def get_all_logworks():
     - month: Comma-separated months to filter by e.g. month=1,2,3 (optional)
     - quarter: Filter by quarter 1-4 (3 months), optional
     - year: Filter by year (optional)
+    - projectId: Filter by project UUID (optional)
     - sortBy: Sort by loghours ('asc' or 'desc'), default is by created date (optional)
     """
     user = get_current_user()
@@ -32,11 +33,16 @@ def get_all_logworks():
     months = parse_month_list_param(request.args.get('month', None))
     quarter = request.args.get('quarter', None)
     year = request.args.get('year', None)
+    project_id = request.args.get('projectId', None)
     sort_by = request.args.get('sortBy', None)
     logworks = LogworkService.get_by_user_id_with_month_filter(
-        str(user.id), months=months or None, quarter=quarter, year=year, sort_by=sort_by
+        str(user.id), months=months or None, quarter=quarter, year=year, project_id=project_id, sort_by=sort_by
     )
-    data = LogworkService.to_list_with_metrics(logworks)
+    data = LogworkService.to_member_payload(
+        logworks=logworks,
+        user_id=str(user.id),
+        eng_name=user.en_full_name,
+    )
 
     return ApiResponse.success(
         data=data,
@@ -55,19 +61,26 @@ def get_all_logworks_admin():
     - month: Comma-separated months to filter by e.g. month=1,2,3 (optional)
     - quarter: Filter by quarter 1-4 (3 months), optional
     - year: Filter by year (optional)
+    - projectId: Filter by project UUID (optional)
     - userName: Filter by employee English name (optional, case-insensitive)
     - sortBy: Sort by loghours ('asc' or 'desc'), default is by created date (optional)
     """
     months = parse_month_list_param(request.args.get('month', None))
     quarter = request.args.get('quarter', None)
     year = request.args.get('year', None)
+    project_id = request.args.get('projectId', None)
     user_eng_name = request.args.get('userName', None)
     sort_by = request.args.get('sortBy', None)
 
     logworks = LogworkService.get_all_with_filters(
-        months=months or None, quarter=quarter, year=year, user_eng_name=user_eng_name, sort_by=sort_by
+        months=months or None,
+        quarter=quarter,
+        year=year,
+        user_eng_name=user_eng_name,
+        project_id=project_id,
+        sort_by=sort_by,
     )
-    data = LogworkService.to_list_with_metrics(logworks)
+    data = LogworkService.to_list_with_metrics(logworks).get("items", [])
 
     return ApiResponse.success(
         data=data,
@@ -119,13 +132,14 @@ def upsert_logworks():
     """Create or update logworks (Admin only)
 
     Accepts an array of logwork objects. For each entry, if a logwork already
-    exists for the given (userId, month, year) it will be updated; otherwise
+    exists for the given (userId, projectId, month, year) it will be updated; otherwise
     a new record is created.
 
     Request body (array):
     [
         {
             "userId": "user-uuid",
+            "projectId": "project-uuid",
             "logHour": 160,
             "month": "2",
             "year": "2026"   (optional, defaults to 2026)
