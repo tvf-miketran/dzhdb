@@ -203,10 +203,19 @@ class FormulaService:
             {
                 "enFullName": emp.en_full_name,
                 "totalEE": sum((pm.allocation_percent or 0) for pm in emp.project_members),
+                "projects": [
+                    {
+                        "projectName": pm.project.name if pm.project else None,
+                        "projectId": pm.project.project_id if pm.project else None,
+                        "allocationPercent": pm.allocation_percent or 0,
+                    }
+                    for pm in emp.project_members
+                    if pm.project
+                ],
             }
             for emp in employees
         ]
-        data.sort(key=lambda x: x["enFullName"] or "")
+        data.sort(key=lambda x: x["totalEE"], reverse=True)
         return data
 
     @staticmethod

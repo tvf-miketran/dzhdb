@@ -518,8 +518,7 @@ def calculate_points_get():
     
     params = FormulaService.get_formula(month)["parameters"] #this return first month
     
-    return ApiResponse.success(
-        data=_round_floats({
+    _data = _round_floats({
             "results": all_results,
             "params": params,
             "average_billable_point": average_billable_point,
@@ -533,7 +532,10 @@ def calculate_points_get():
             "logwork_standard": logwork_standard,
             "average_ee": average_ee,
             "total_current_member": FormulaService.get_active_employee_count(),
-        }),
+        })
+    _data["total_billable_point"] = round(total_billable_point, 3)
+    return ApiResponse.success(
+        data=_data,
         message="Points calculated successfully"
     )
 
@@ -731,8 +733,7 @@ def calculate_employee_point(employee_id: str):
     
     params = FormulaService.get_formula(month)["parameters"]
     
-    return ApiResponse.success(
-        data=_round_floats({
+    _data = _round_floats({
             "results": all_results,
             "average_billable_point": average_billable_point,
             "total_billable_point": total_billable_point,
@@ -742,7 +743,10 @@ def calculate_employee_point(employee_id: str):
             "logwork_standard": logwork_standard,
             "params": params,
             "average_ee": average_ee
-        }),
+        })
+    _data["total_billable_point"] = round(total_billable_point, 3)
+    return ApiResponse.success(
+        data=_data,
         message="Point calculated successfully"
     )
 
