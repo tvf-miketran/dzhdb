@@ -19,6 +19,13 @@ class Logwork(db.Model):
         nullable=False
     )
 
+    project_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey('projects.id', ondelete='CASCADE'),
+        nullable=True,
+        index=True,
+    )
+
     loghours = db.Column(
         db.Numeric(10, 2),
         nullable=False
@@ -51,15 +58,15 @@ class Logwork(db.Model):
     )
 
     # Relationships
-    # project = db.relationship(
-    #     'Project',
-    #     backref='logworks'
-    # )
-
     employee = db.relationship(
         'Employee',
         back_populates='logworks'
     )
 
+    project = db.relationship(
+        'Project',
+        back_populates='logworks'
+    )
+
     def __repr__(self):
-        return f"<Logwork {self.id} - {self.loghours}h in Month {self.month}>"
+        return f"<Logwork {self.id} - {self.loghours}h in Month {self.month} Project {self.project_id}>"

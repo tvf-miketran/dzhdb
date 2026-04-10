@@ -11,6 +11,71 @@ from app.responses import ApiResponse
 employee_bp = Blueprint("employee", __name__)
 
 
+@employee_bp.route("/members/projects", methods=["GET"])
+@jwt_required()
+@admin_required
+def get_all_members_with_projects():
+    """Get all members with their project allocations for FE.
+
+    Query parameters:
+    - status: Filter by status (true/false). Default: true
+    """
+    status_param = request.args.get("status", "true", type=str)
+    status: bool | None = None
+    if status_param:
+        value = status_param.lower()
+        if value == "true":
+            status = True
+        elif value == "false":
+            status = False
+
+    data = EmployeeService.get_all_members_with_projects(status=status)
+    return ApiResponse.success(
+        data=data,
+        message="Members with projects retrieved successfully",
+    )
+
+
+@employee_bp.route("/me/projects", methods=["GET"])
+@jwt_required()
+def get_my_projects():
+    """Get current member with their projects using JWT token."""
+    user = get_current_user()
+    if not user:
+        return ApiResponse.error(
+            message="User not found",
+            errors=["Unable to identify current user"],
+            status_code=404
+        )
+
+    projects = []
+    for pm in user.project_members:
+        projects.append({
+            "projectId": str(pm.project_id) if pm.project_id else None,
+            "projectName": pm.project.name if pm.project and hasattr(pm.project, 'name') else None,
+            "projectKey": pm.project.project_key if pm.project and hasattr(pm.project, 'project_key') else None,
+            "roleId": str(pm.role_id) if pm.role_id else None,
+            "roleName": pm.role.name if pm.role and hasattr(pm.role, 'name') else None,
+            "allocationPercent": pm.allocation_percent,
+            "joinedAt": pm.joined_at.isoformat() if pm.joined_at else None,
+        })
+
+    data = {
+        "id": str(user.id),
+        "employeeId": user.employeeId,
+        "email": user.email,
+        "vnFullName": user.vn_full_name,
+        "enFullName": user.en_full_name,
+        "status": user.status,
+        "projects": projects,
+    }
+
+    return ApiResponse.success(
+        data=data,
+        message="Member projects retrieved successfully",
+    )
+
+
 @employee_bp.route("", methods=["GET"])
 @jwt_required()
 def get_all_employees():

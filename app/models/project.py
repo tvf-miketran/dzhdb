@@ -78,13 +78,11 @@ class Project(db.Model):
         cascade='all, delete-orphan'
     )
 
-    # # Project owns its logwork records
-    # # Xóa project → Xóa tất cả logwork của project
-    # logworks = db.relationship(
-    #     'Logwork',
-    #     back_populates='project',
-    #     cascade='all, delete-orphan'
-    # )
+    logworks = db.relationship(
+        'Logwork',
+        back_populates='project',
+        cascade='all, delete-orphan'
+    )
 
     def __repr__(self):
         return f"<Project {self.name}>"
