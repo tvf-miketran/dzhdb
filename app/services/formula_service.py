@@ -726,9 +726,11 @@ class FormulaService:
         }
 
     @staticmethod
-    def _get_logwork_user_ids_by_month(month_str: str) -> Set[str]:
+    def _get_logwork_user_ids_by_month(month_str: str, project_id: str = None) -> Set[str]:
         """Get user IDs that have logwork records in a specific month."""
         logwork_records = LogworkDAO.get_by_month(month_str)
+        if project_id:
+            logwork_records = [log for log in logwork_records if str(log.project_id) == str(project_id)]
         print(f"Calculating billable metrics for month {month_str}: found {len(logwork_records)} logwork records")
         return {str(log.user_id) for log in logwork_records}
 
@@ -1085,7 +1087,7 @@ class FormulaService:
         active_non_admin_ids = {
             str(emp.id) for emp in EmployeeDAO.get_all_active_non_admin()
         }
-        logwork_user_ids = FormulaService._get_logwork_user_ids_by_month(month_str)
+        logwork_user_ids = FormulaService._get_logwork_user_ids_by_month(month_str, project_id)
         valid_employee_ids = active_non_admin_ids | logwork_user_ids
         ticket_employee_ids = FormulaService._get_ticket_employee_ids_by_month(month, project_id)
         
@@ -1114,6 +1116,7 @@ class FormulaService:
                 stored_data = [
                     emp for emp in stored_data
                     if str(emp.get("employee_id")) in ticket_employee_ids
+                    or str(emp.get("employee_id")) in logwork_user_ids
                 ]
                 stored_data.sort(key=lambda x: (
                     FormulaService._PERFORMANCE_ORDER.get(
@@ -1214,12 +1217,14 @@ class FormulaService:
             employeeuuid_str = str(employeeuuid)
             results = [emp for emp in results if str(emp.get("employee_id")) == employeeuuid_str]
 
-        # When filtering by project, only keep employees who have tickets in that project
+        # When filtering by project, only keep employees who have tickets or logwork in that project
         if project_id:
-            results = [emp for emp in results if str(emp.get("employee_id")) in ticket_employee_ids]
+            results = [emp for emp in results if str(emp.get("employee_id")) in ticket_employee_ids
+                       or str(emp.get("employee_id")) in logwork_user_ids]
         
         if not employeeuuid:
-            results = [emp for emp in results if str(emp.get("employee_id")) in ticket_employee_ids]
+            results = [emp for emp in results if str(emp.get("employee_id")) in ticket_employee_ids
+                       or str(emp.get("employee_id")) in logwork_user_ids]
 
         results.sort(key=lambda x: (
             FormulaService._PERFORMANCE_ORDER.get(
