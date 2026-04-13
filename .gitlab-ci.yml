@@ -10,7 +10,7 @@ build:
   stage: build
   tags:
     - vps-BE-runner
-  image: docker:24.0
+  image: docker:29.1
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker build -t $IMAGE:$TAG -t $IMAGE:latest .
