@@ -44,4 +44,4 @@ deploy:
         docker image prune -f
       EOF
   only:
-    - main
+    - dev
