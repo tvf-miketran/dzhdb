@@ -12,6 +12,7 @@ from app import db
 from app.utils.math_engine import MathEngine
 from app.dao.logwork_dao import LogworkDAO
 from app.dao.project_dao import ProjectDAO
+from app.utils.number_parser import normalize_numeric_string, parse_float_value
 
 
 class FormulaService:
@@ -103,7 +104,7 @@ class FormulaService:
         elif variable_name == "BILLABLE_PARAM":
             # Get BILLABLE_PARAM from system params (with month)
             billable_param = FormulaService._get_param("BILLABLE_PARAM")
-            return float(billable_param) if billable_param else 0.0
+            return parse_float_value(billable_param, 0.0)
         
         # Unknown dynamic variable - return 0
         return 0.0
@@ -161,7 +162,7 @@ class FormulaService:
         logwork = query.first()
         
         if logwork and logwork.loghours:
-            return float(logwork.loghours)
+            return parse_float_value(logwork.loghours, 0.0)
         
         return 0.0
     
@@ -181,10 +182,8 @@ class FormulaService:
         total = 0.0
         for month in months:
             value = FormulaService._get_param("STANDARD_LOGWORK", month)
-            try:
-                total += float(value) if value is not None else 0.0
-            except (TypeError, ValueError):
-                total += 0.0
+            total += parse_float_value(value, 0.0)
+        return total
         return total
 
     @staticmethod
@@ -231,10 +230,7 @@ class FormulaService:
         total = 0.0
         for month in months:
             billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
-            try:
-                monthly_billable_param = float(billable_param) if billable_param is not None else 0.0
-            except (TypeError, ValueError):
-                monthly_billable_param = 0.0
+            monthly_billable_param = parse_float_value(billable_param, 0.0)
 
             total += monthly_billable_param / active_employee_count
 
@@ -297,7 +293,8 @@ class FormulaService:
             month: Month number (1-12). If provided, stores with month prefix.
         """
         for key, value in params.items():
-            FormulaService._set_param(key, str(value), month)
+            normalized_value = normalize_numeric_string(value)
+            FormulaService._set_param(key, normalized_value if normalized_value is not None else str(value), month)
         
         return FormulaService.get_formula(month)
     
@@ -362,8 +359,8 @@ class FormulaService:
         standard = FormulaService._get_param(standard_key, month)
         
         # Default values if not set
-        role_weight = float(role_weight) if role_weight else 1.0
-        standard = float(standard) if standard else 7.0
+        role_weight = parse_float_value(role_weight, 1.0)
+        standard = parse_float_value(standard, 7.0)
         
         return role_weight, standard
     
@@ -408,7 +405,7 @@ class FormulaService:
         for key, value in all_params.items():
             if value and not key.endswith("_FORMULA_STRING"):
                 try:
-                    static_context[key] = float(value)
+                    static_context[key] = parse_float_value(value, 0.0)
                 except (ValueError, TypeError):
                     pass
         
@@ -474,7 +471,7 @@ class FormulaService:
             try:
                 engine = MathEngine()
                 result = engine.calculate(formula_string, context)
-                point = float(result)
+                point = parse_float_value(result, 0.0)
             except ZeroDivisionError as e:
                 print(f"[WARNING] Division by zero in ticket_point calculation: {e}")
             except Exception as e:
@@ -541,7 +538,7 @@ class FormulaService:
         for key, value in all_params.items():
             if value and not key.endswith("_FORMULA_STRING"):
                 try:
-                    context[key] = float(value)
+                    context[key] = parse_float_value(value, 0.0)
                 except (ValueError, TypeError):
                     pass
         
@@ -552,7 +549,7 @@ class FormulaService:
         try:
             engine = MathEngine()
             result = engine.calculate(formula_string, context)
-            return float(result)
+            return parse_float_value(result, 0.0)
         except ZeroDivisionError as e:
             print(f"[WARNING] Division by zero in logwork_point calculation: {e}")
             return 0.0
@@ -598,7 +595,7 @@ class FormulaService:
         try:
             engine = MathEngine()
             result = engine.calculate(formula_string, context)
-            return float(result)
+            return parse_float_value(result, 0.0)
         except ZeroDivisionError as e:
             print(f"[WARNING] Division by zero in member_contr_point calculation: {e}")
             # Fallback to simple addition
@@ -639,10 +636,10 @@ class FormulaService:
         
         # Get BILLABLE_PARAM from system params
         if billable_param_override is not None:
-            billable_param_value = float(billable_param_override)
+            billable_param_value = parse_float_value(billable_param_override, 0.0)
         else:
             billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
-            billable_param_value = float(billable_param) if billable_param else 0.0
+            billable_param_value = parse_float_value(billable_param, 0.0)
         
         # Build context with dynamic values
         context = {
@@ -655,7 +652,7 @@ class FormulaService:
         try:
             engine = MathEngine()
             result = engine.calculate(formula_string, context)
-            return float(result)
+            return parse_float_value(result, 0.0)
         except ZeroDivisionError as e:
             # Handle division by zero explicitly
             print(f"[WARNING] Division by zero in billable_point calculation: {e}")
@@ -1169,7 +1166,7 @@ class FormulaService:
 
         # Split BILLABLE_PARAM: 90% for shared formula, 10% evenly for manager users.
         billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
-        billable_param_value = float(billable_param) if billable_param else 0.0
+        billable_param_value = parse_float_value(billable_param, 0.0)
         common_billable_param = billable_param_value * 0.9
         manager_bonus_pool = billable_param_value * 0.1
 
@@ -1275,7 +1272,7 @@ class FormulaService:
         # Get billable param for the month
         billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
         print(f"Calculating performance for employee {employee_id} in month {month_str}: billable_point={billable_point}, member_count={member_count}, billable_param={billable_param}")
-        billable_param_value = float(billable_param) if billable_param else 0.0
+        billable_param_value = parse_float_value(billable_param, 0.0)
         
         # Calculate performance point: billable_point / (billable_param/member_count)
         if member_count > 0 and billable_param_value > 0:
@@ -1339,7 +1336,7 @@ class FormulaService:
             return 0.0
 
         billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
-        billable_param_value = float(billable_param) if billable_param else 0.0
+        billable_param_value = parse_float_value(billable_param, 0.0)
 
         average_ee = billable_param_value / total_team_ee * 100
         return average_ee
