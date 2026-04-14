@@ -1270,7 +1270,7 @@ class FormulaService:
         """
         # Get number of employees with logwork in that month (convert month to 2-digit string)
         month_str = str(month).zfill(2)
-        member_count = LogworkDAO.get_by_month(month_str).__len__()
+        member_count = len(FormulaService._get_logwork_user_ids_by_month(month_str))
         
         # Get billable param for the month
         billable_param = FormulaService._get_param("BILLABLE_PARAM", month)
