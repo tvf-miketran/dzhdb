@@ -1251,10 +1251,48 @@ class FormulaService:
         total_ee = sum(membership.allocation_percent for membership in memberships)
         
         return total_ee
+
+    @staticmethod
+    def _get_performance_level(performance_result: float, month_count: int = 1) -> str:
+        """Map performance result to level with thresholds scaled by month_count.
+
+        Base thresholds for 1 month:
+        - < 1: Bad
+        - >= 1 and < 2: Good
+        - >= 2: Excellent
+
+        For N months, thresholds become:
+        - < N: Bad
+        - >= N and < 2N: Good
+        - >= 2N: Excellent
+        """
+        safe_month_count = month_count if month_count and month_count > 0 else 1
+        good_threshold = float(safe_month_count)
+        excellent_threshold = float(2 * safe_month_count)
+
+        if performance_result >= excellent_threshold:
+            return "Excellent"
+        if performance_result >= good_threshold:
+            return "Good"
+        return "Bad"
+
+    @staticmethod
+    def build_member_performance(total_ee: float, performance_result: float, month_count: int = 1) -> Dict[str, Any]:
+        """Build member_performance payload using scalable thresholds."""
+        return {
+            "performance_level": FormulaService._get_performance_level(performance_result, month_count),
+            "total_ee": total_ee,
+            "performance_result": performance_result,
+        }
     
     # Calculate member performance level based on billable point and predefined thresholds (optional enhancement)
     @staticmethod
-    def calculate_member_performance(employee_id: str, billable_point: float, month: int) -> Dict[str, Any]:
+    def calculate_member_performance(
+        employee_id: str,
+        billable_point: float,
+        month: int,
+        month_count: int = 1,
+    ) -> Dict[str, Any]:
         """Calculate member performance level based on billable point and thresholds
         
         Args:
@@ -1292,19 +1330,10 @@ class FormulaService:
             # If no allocation, default to "Bad"
             result = 0.0
         
-        # Determine performance level based on result
-        if result >= 2:
-            performance_level = "Excellent"
-        elif result > 1:
-            performance_level = "Good"
-        else:
-            performance_level = "Bad"
-        
+        performance_level = FormulaService._get_performance_level(result, month_count)
+
         print(f"Employee {employee_id}: final performance result={result}, level={performance_level}")
-        return {
-            "performance_level": performance_level,
-            "total_ee": total_ee
-        }
+        return FormulaService.build_member_performance(total_ee, result, month_count)
 
     # Keep legacy method for backward compatibility
     @staticmethod

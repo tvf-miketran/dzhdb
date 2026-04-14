@@ -490,7 +490,11 @@ def calculate_points_get():
                     "billable_point": 0.0,
                     "total_team_points": 0.0,
                     "ticket_breakdown": [],
-                    "member_performance": None,
+                    "member_performance": {
+                        "performance_level": "Bad",
+                        "total_ee": 0.0,
+                        "performance_result": 0.0,
+                    },
                 }
             entry = employee_map[emp_id]
             entry["months"].append(record.get("month"))
@@ -502,9 +506,22 @@ def calculate_points_get():
             entry["billable_point"] += record.get("billable_point", 0.0)
             entry["total_team_points"] += record.get("total_team_points", 0.0)
             entry["ticket_breakdown"].extend(record.get("ticket_breakdown", []))
-            # Keep member_performance from last month record
             if record.get("member_performance"):
-                entry["member_performance"] = record.get("member_performance")
+                perf = record.get("member_performance") or {}
+                entry["member_performance"]["performance_result"] += perf.get("performance_result", 0.0)
+                if perf.get("total_ee"):
+                    entry["member_performance"]["total_ee"] = perf.get("total_ee")
+
+        for entry in employee_map.values():
+            unique_month_count = len(set(entry.get("months", []))) or len(months)
+            perf = entry.get("member_performance") or {}
+            total_ee = perf.get("total_ee", 0.0)
+            performance_result = perf.get("performance_result", 0.0)
+            entry["member_performance"] = FormulaService.build_member_performance(
+                total_ee=total_ee,
+                performance_result=performance_result,
+                month_count=unique_month_count,
+            )
 
         all_results = list(employee_map.values())
 
@@ -697,7 +714,11 @@ def calculate_employee_point(employee_id: str):
             "billable_point": 0.0,
             "total_team_points": 0.0,
             "ticket_breakdown": [],
-            "member_performance": None,
+            "member_performance": {
+                "performance_level": "Bad",
+                "total_ee": 0.0,
+                "performance_result": 0.0,
+            },
         }
 
         for record in all_results:
@@ -710,7 +731,18 @@ def calculate_employee_point(employee_id: str):
             combined["total_team_points"] += record.get("total_team_points", 0.0)
             combined["ticket_breakdown"].extend(record.get("ticket_breakdown", []))
             if record.get("member_performance"):
-                combined["member_performance"] = record.get("member_performance")
+                perf = record.get("member_performance") or {}
+                combined["member_performance"]["performance_result"] += perf.get("performance_result", 0.0)
+                if perf.get("total_ee"):
+                    combined["member_performance"]["total_ee"] = perf.get("total_ee")
+
+        unique_month_count = len(set(combined.get("months", []))) or len(months)
+        perf = combined.get("member_performance") or {}
+        combined["member_performance"] = FormulaService.build_member_performance(
+            total_ee=perf.get("total_ee", 0.0),
+            performance_result=perf.get("performance_result", 0.0),
+            month_count=unique_month_count,
+        )
 
         all_results = [combined]
     else:
