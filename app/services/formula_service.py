@@ -1115,8 +1115,8 @@ class FormulaService:
                 average_ee = FormulaService.calculate_average_team_ee(stored_data, month)
                 stored_data = [
                     emp for emp in stored_data
-                    if str(emp.get("employee_id")) in ticket_employee_ids
-                    or str(emp.get("employee_id")) in logwork_user_ids
+                    if emp.get("ticket_point", 0) != 0
+                    or emp.get("logwork_point", 0) != 0
                 ]
                 stored_data.sort(key=lambda x: (
                     FormulaService._PERFORMANCE_ORDER.get(
@@ -1217,14 +1217,15 @@ class FormulaService:
             employeeuuid_str = str(employeeuuid)
             results = [emp for emp in results if str(emp.get("employee_id")) == employeeuuid_str]
 
-        # When filtering by project, only keep employees who have tickets or logwork in that project
+        # Filter out employees where both ticket_point and logwork_point are 0
         if project_id:
             results = [emp for emp in results if str(emp.get("employee_id")) in ticket_employee_ids
                        or str(emp.get("employee_id")) in logwork_user_ids]
         
         if not employeeuuid:
-            results = [emp for emp in results if str(emp.get("employee_id")) in ticket_employee_ids
-                       or str(emp.get("employee_id")) in logwork_user_ids]
+            results = [emp for emp in results
+                       if emp.get("ticket_point", 0) != 0
+                       or emp.get("logwork_point", 0) != 0]
 
         results.sort(key=lambda x: (
             FormulaService._PERFORMANCE_ORDER.get(
