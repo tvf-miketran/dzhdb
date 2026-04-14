@@ -278,14 +278,17 @@ class LogworkService:
         }
         
     @staticmethod
-    def upsert(request_data: CreateLogworkRequest) -> Tuple[Optional[Logwork], Optional[List[str]]]:
-        """Create or update logwork (upsert) keyed on (user_id, project_id, month, year)."""
+    def upsert(request_data: CreateLogworkRequest) -> Tuple[Optional[Logwork], Optional[List[str]], bool]:
+        """Create, update, or delete logwork keyed on (user_id, project_id, month, year).
+
+        A logHour value of 0 removes the matching record instead of saving a zero-hour row.
+        """
         errors = []
 
         user = Employee.query.filter_by(id=request_data.user_id).first()
         if not user:
             errors.append(f"User with ID '{request_data.user_id}' not found")
-            return None, errors
+            return None, errors, False
 
         try:
             existing = LogworkDAO.get_by_user_id_month_year(
@@ -294,6 +297,11 @@ class LogworkService:
                 request_data.year,
                 request_data.project_id,
             )
+
+            if request_data.log_hours == 0:
+                if existing:
+                    LogworkDAO.delete(str(existing.id))
+                return None, None, True
 
             if existing:
                 logwork = LogworkDAO.update(
@@ -309,9 +317,9 @@ class LogworkService:
                     month=request_data.month,
                     year=request_data.year,
                 )
-            return logwork, None
+            return logwork, None, False
         except Exception as e:
-            return None, [f"Error upserting logwork: {str(e)}"]
+            return None, [f"Error upserting logwork: {str(e)}"], False
     
     @staticmethod
     def update(id: str, user_id: str, request_data: UpdateLogworkRequest) -> Tuple[Optional[Logwork], Optional[List[str]]]:

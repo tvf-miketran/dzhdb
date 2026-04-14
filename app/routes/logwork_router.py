@@ -183,6 +183,7 @@ def upsert_logworks():
 
     results = []
     all_errors = []
+    deleted_count = 0
 
     for idx, item in enumerate(data):
         # Validate request
@@ -192,15 +193,19 @@ def upsert_logworks():
             continue
 
         # Upsert logwork
-        logwork, errors = LogworkService.upsert(upsert_request)
+        logwork, errors, deleted = LogworkService.upsert(upsert_request)
         if errors:
             all_errors.append({"index": idx, "errors": errors})
+            continue
+
+        if deleted:
+            deleted_count += 1
             continue
 
         results.append(LogworkService._to_dict(logwork))
 
     # If all failed, return error
-    if len(results) == 0:
+    if len(results) == 0 and deleted_count == 0:
         return ApiResponse.error(
             message="Failed to upsert logworks",
             errors=all_errors,
@@ -211,13 +216,13 @@ def upsert_logworks():
     if len(all_errors) > 0:
         return ApiResponse.success(
             data=results,
-            message=f"Upserted {len(results)} out of {len(data)} logworks",
+            message=f"Upserted {len(results)} logworks and deleted {deleted_count} logworks out of {len(data)} requests",
             status_code=207
         )
 
     return ApiResponse.success(
         data=results,
-        message="Logworks upserted successfully",
+        message=f"Upserted {len(results)} logworks and deleted {deleted_count} logworks successfully",
         status_code=200
     )
 
