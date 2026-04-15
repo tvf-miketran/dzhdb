@@ -474,6 +474,12 @@ def calculate_points_get():
         project_id=project_id,
         employeeuuid=employeeuuid,
     )
+    ticket_comparison = FormulaService.calculate_ticket_comparison(
+        months=months,
+        year=year,
+        project_id=project_id,
+        employeeuuid=employeeuuid,
+    )
 
     billable_standard = FormulaService.get_billable_standard_total(months)
     
@@ -554,6 +560,7 @@ def calculate_points_get():
             "billable_standard": billable_standard,
             "logwork_standard": logwork_standard,
             "logwork_comparison": logwork_comparison,
+            "ticket_comparison": ticket_comparison,
             "average_ee": average_ee,
             "total_current_member": FormulaService.get_active_employee_count(),
         })

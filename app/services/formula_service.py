@@ -371,6 +371,183 @@ class FormulaService:
             "year": year,
             "items": [_build_month_item(month) for month in months],
         }
+
+    @staticmethod
+    def _get_ticket_standard_by_role(role_id: str, month: int) -> Tuple[float, str]:
+        """Get ticket standard value by role code for one month.
+
+        EQA/IQA use STANDARD_QA.
+        """
+        role_code = (role_id or "").upper()
+        if role_code in ("EQA", "IQA"):
+            standard_key = "STANDARD_QA"
+        else:
+            standard_key = f"STANDARD_{role_code}"
+
+        standard_value = parse_float_value(FormulaService._get_param(standard_key, month), 0.0)
+        return standard_value, standard_key
+
+    @staticmethod
+    def _get_scope_member_ticket_profiles(
+        month: int,
+        project_id: str = None,
+        employeeuuid: str = None,
+    ) -> List[Dict[str, Any]]:
+        """Build scoped member ticket expectation profiles for one month."""
+        profiles: Dict[str, Dict[str, Any]] = {}
+
+        def _ensure_profile(emp) -> Dict[str, Any]:
+            employee_id = str(emp.id)
+            if employee_id not in profiles:
+                profiles[employee_id] = {
+                    "employee_id": employee_id,
+                    "employee_name": emp.en_full_name,
+                    "employee_code": emp.employeeId,
+                    "ee_percent": 0.0,
+                    "expected_ticket": 0.0,
+                    "role_allocations": [],
+                }
+            return profiles[employee_id]
+
+        if project_id:
+            project = ProjectDAO.get_by_id(project_id)
+            if not project:
+                return []
+
+            for pm in project.project_members or []:
+                emp = pm.employee
+                if not emp or not emp.status:
+                    continue
+                if (emp.authorize_role or "").upper() == "ADMIN":
+                    continue
+
+                profile = _ensure_profile(emp)
+                ee_percent = parse_float_value(pm.allocation_percent, 0.0)
+                role_code = ((pm.role.role_id if pm.role else "") or "").upper()
+                standard_value, standard_key = FormulaService._get_ticket_standard_by_role(role_code, month)
+                expected_by_role = standard_value * ee_percent / 100.0
+
+                profile["ee_percent"] += ee_percent
+                profile["expected_ticket"] += expected_by_role
+                profile["role_allocations"].append({
+                    "role": role_code,
+                    "ee_percent": ee_percent,
+                    "standard_key": standard_key,
+                    "standard_value": standard_value,
+                    "expected_ticket": expected_by_role,
+                })
+        else:
+            employees = EmployeeDAO.get_all_active_non_admin()
+
+            for emp in employees:
+                _ensure_profile(emp)
+
+                for pm in emp.project_members or []:
+                    ee_percent = parse_float_value(pm.allocation_percent, 0.0)
+                    role_code = ((pm.role.role_id if pm.role else "") or "").upper()
+                    standard_value, standard_key = FormulaService._get_ticket_standard_by_role(role_code, month)
+                    expected_by_role = standard_value * ee_percent / 100.0
+
+                    profile = profiles[str(emp.id)]
+                    profile["ee_percent"] += ee_percent
+                    profile["expected_ticket"] += expected_by_role
+                    profile["role_allocations"].append({
+                        "role": role_code,
+                        "ee_percent": ee_percent,
+                        "standard_key": standard_key,
+                        "standard_value": standard_value,
+                        "expected_ticket": expected_by_role,
+                    })
+
+        scoped_profiles = list(profiles.values())
+        if employeeuuid:
+            employeeuuid_str = str(employeeuuid)
+            scoped_profiles = [p for p in scoped_profiles if p.get("employee_id") == employeeuuid_str]
+
+        scoped_profiles.sort(key=lambda x: x.get("ee_percent", 0.0), reverse=True)
+        return scoped_profiles
+
+    @staticmethod
+    def calculate_ticket_comparison(
+        months: List[int],
+        year: int = None,
+        project_id: str = None,
+        employeeuuid: str = None,
+    ) -> Dict[str, Any]:
+        """Calculate expected vs actual closed tickets.
+
+        expected_ticket(member) = sum(role_standard(month) * role_ee_percent / 100)
+        actual_ticket(member) = number of CLOSED tickets in month.
+        """
+        if not year:
+            year = datetime.now().year
+
+        if not months:
+            return {
+                "months": [],
+                "year": year,
+                "items": [],
+            }
+
+        def _build_month_item(month: int) -> Dict[str, Any]:
+            profiles = FormulaService._get_scope_member_ticket_profiles(
+                month=month,
+                project_id=project_id,
+                employeeuuid=employeeuuid,
+            )
+
+            members: List[Dict[str, Any]] = []
+            total_expected = 0.0
+            total_actual = 0.0
+            total_ee_percent = 0.0
+
+            for profile in profiles:
+                employee_id = profile.get("employee_id")
+                expected_ticket = parse_float_value(profile.get("expected_ticket"), 0.0)
+                actual_closed_ticket = FormulaService.count_tickets(
+                    month=month,
+                    employeeuuid=employee_id,
+                    status_id="CLOSED",
+                    project_id=project_id,
+                )
+
+                total_expected += expected_ticket
+                total_actual += actual_closed_ticket
+                total_ee_percent += parse_float_value(profile.get("ee_percent"), 0.0)
+
+                members.append({
+                    "employee_id": employee_id,
+                    "employee_name": profile.get("employee_name"),
+                    "employee_code": profile.get("employee_code"),
+                    "ee_percent": profile.get("ee_percent", 0.0),
+                    "expected_ticket": expected_ticket,
+                    "actual_closed_ticket": actual_closed_ticket,
+                    "gap": actual_closed_ticket - expected_ticket,
+                    "role_allocations": profile.get("role_allocations", []),
+                })
+
+            achievement_percent = (total_actual / total_expected * 100.0) if total_expected > 0 else 0.0
+
+            return {
+                "month": month,
+                "year": year,
+                "member_count": len(members),
+                "total_ee_percent": total_ee_percent,
+                "expected_ticket": total_expected,
+                "actual_closed_ticket": total_actual,
+                "gap": total_actual - total_expected,
+                "achievement_percent": achievement_percent,
+                "members": members,
+            }
+
+        if len(months) == 1:
+            return _build_month_item(months[0])
+
+        return {
+            "months": months,
+            "year": year,
+            "items": [_build_month_item(month) for month in months],
+        }
     
     @staticmethod
     def _set_param(param_key: str, param_value: str, month: int = None, description: str = None) -> SystemParameter:
