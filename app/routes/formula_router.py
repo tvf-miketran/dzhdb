@@ -468,6 +468,12 @@ def calculate_points_get():
 
     total_billable_point = sum(monthly_total_billable_points) if monthly_total_billable_points else 0.0
     logwork_standard = FormulaService.get_logwork_standard_total(months)
+    logwork_comparison = FormulaService.calculate_logwork_comparison(
+        months=months,
+        year=year,
+        project_id=project_id,
+        employeeuuid=employeeuuid,
+    )
 
     billable_standard = FormulaService.get_billable_standard_total(months)
     
@@ -547,6 +553,7 @@ def calculate_points_get():
             "total_tickets": total_tickets,
             "billable_standard": billable_standard,
             "logwork_standard": logwork_standard,
+            "logwork_comparison": logwork_comparison,
             "average_ee": average_ee,
             "total_current_member": FormulaService.get_active_employee_count(),
         })
