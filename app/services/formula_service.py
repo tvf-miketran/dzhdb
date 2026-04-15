@@ -184,7 +184,6 @@ class FormulaService:
             value = FormulaService._get_param("STANDARD_LOGWORK", month)
             total += parse_float_value(value, 0.0)
         return total
-        return total
 
     @staticmethod
     def get_active_employee_count() -> int:
@@ -235,6 +234,143 @@ class FormulaService:
             total += monthly_billable_param / active_employee_count
 
         return total
+
+    @staticmethod
+    def _get_scope_member_ee(
+        project_id: str = None,
+        employeeuuid: str = None,
+    ) -> List[Dict[str, Any]]:
+        """Get scoped members with EE percent for logwork comparison.
+
+        - With `project_id`: EE is allocation in that project.
+        - Without `project_id`: EE is total allocation across all projects.
+        """
+        members: Dict[str, Dict[str, Any]] = {}
+
+        if project_id:
+            project = ProjectDAO.get_by_id(project_id)
+            if not project:
+                return []
+
+            for pm in project.project_members or []:
+                emp = pm.employee
+                if not emp or not emp.status:
+                    continue
+                if (emp.authorize_role or "").upper() == "ADMIN":
+                    continue
+
+                user_id = str(pm.user_id)
+                if user_id not in members:
+                    members[user_id] = {
+                        "employee_id": user_id,
+                        "employee_name": emp.en_full_name,
+                        "employee_code": emp.employeeId,
+                        "ee_percent": 0.0,
+                    }
+                members[user_id]["ee_percent"] += float(pm.allocation_percent or 0)
+        else:
+            employees = EmployeeDAO.get_all_active_non_admin()
+            for emp in employees:
+                user_id = str(emp.id)
+                members[user_id] = {
+                    "employee_id": user_id,
+                    "employee_name": emp.en_full_name,
+                    "employee_code": emp.employeeId,
+                    "ee_percent": float(sum((pm.allocation_percent or 0) for pm in (emp.project_members or []))),
+                }
+
+        scoped_members = list(members.values())
+
+        if employeeuuid:
+            employeeuuid_str = str(employeeuuid)
+            scoped_members = [m for m in scoped_members if m.get("employee_id") == employeeuuid_str]
+
+        return scoped_members
+
+    @staticmethod
+    def calculate_logwork_comparison(
+        months: List[int],
+        year: int = None,
+        project_id: str = None,
+        employeeuuid: str = None,
+    ) -> Dict[str, Any]:
+        """Calculate expected vs actual logwork.
+
+        For a single month, return one comparison object.
+        For multiple months, keep comparison split by month in `items` and do not combine
+        the month-level expected/actual values.
+        """
+        if not year:
+            year = datetime.now().year
+
+        if not months:
+            return {
+                "months": [],
+                "year": year,
+                "items": [],
+            }
+
+        members = FormulaService._get_scope_member_ee(project_id=project_id, employeeuuid=employeeuuid)
+
+        def _build_month_item(month: int) -> Dict[str, Any]:
+            standard_logwork_total = FormulaService.get_logwork_standard_total([month])
+            month_str = str(month).zfill(2)
+
+            member_rows: List[Dict[str, Any]] = []
+            total_expected = 0.0
+            total_actual = 0.0
+            total_ee_percent = 0.0
+
+            for member in members:
+                employee_id = str(member.get("employee_id"))
+                ee_percent = parse_float_value(member.get("ee_percent"), 0.0)
+                expected = standard_logwork_total * ee_percent / 100.0
+                actual = LogworkDAO.sum_hours_by_user_ids_months(
+                    user_ids=[employee_id],
+                    months=[month_str],
+                    year=str(year),
+                    project_id=project_id,
+                )
+                gap = actual - expected
+
+                total_ee_percent += ee_percent
+                total_expected += expected
+                total_actual += actual
+
+                member_rows.append({
+                    "employee_id": employee_id,
+                    "employee_name": member.get("employee_name"),
+                    "employee_code": member.get("employee_code"),
+                    "ee_percent": ee_percent,
+                    "expected_logwork": expected,
+                    "actual_logwork": actual,
+                    "gap": gap,
+                })
+
+            member_rows.sort(key=lambda x: x.get("ee_percent", 0.0), reverse=True)
+            achievement_percent = (total_actual / total_expected * 100.0) if total_expected > 0 else 0.0
+
+            return {
+                "month": month,
+                "year": year,
+                "member_count": len(member_rows),
+                "standard_logwork_total": standard_logwork_total,
+                "total_ee_percent": total_ee_percent,
+                "expected_logwork": total_expected,
+                "actual_logwork": total_actual,
+                "gap": total_actual - total_expected,
+                "achievement_percent": achievement_percent,
+                "members": member_rows,
+            }
+
+        if len(months) == 1:
+            return _build_month_item(months[0])
+
+        return {
+            "months": months,
+            "year": year,
+            "items": [_build_month_item(month) for month in months],
+        }
     
     @staticmethod
     def _set_param(param_key: str, param_value: str, month: int = None, description: str = None) -> SystemParameter:
