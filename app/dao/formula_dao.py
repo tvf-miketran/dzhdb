@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from app.models.systemparam import SystemParameter
 from app import db
+from app.utils.number_parser import normalize_numeric_string
 
 
 class FormulaDAO:
@@ -92,16 +93,19 @@ class FormulaDAO:
         """
         if month is not None:
             param_key = FormulaDAO.get_prefixed_key(param_key, month)
+
+        normalized_value = normalize_numeric_string(param_value)
+        stored_value = normalized_value if normalized_value is not None else str(param_value)
         
         param = SystemParameter.query.filter_by(param_key=param_key).first()
         if param:
-            param.param_value = param_value
+            param.param_value = stored_value
             if description:
                 param.description = description
         else:
             param = SystemParameter(
                 param_key=param_key,
-                param_value=param_value,
+                param_value=stored_value,
                 description=description
             )
             db.session.add(param)

@@ -5,7 +5,7 @@ from app.dao.project_dao import ProjectDAO
 from app.models.logwork import Logwork
 from app.models.employee import Employee
 from app.requests.logwork_request import CreateLogworkRequest, UpdateLogworkRequest
-from decimal import Decimal
+from app.utils.number_parser import parse_float_value
 
 
 class LogworkService:
@@ -13,10 +13,7 @@ class LogworkService:
     @staticmethod
     def _safe_float(value: Any, default: float = 0.0) -> float:
         """Safely convert value to float."""
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return default
+        return parse_float_value(value, default)
 
     @staticmethod
     def _get_standard_logwork_by_month(month: str) -> float:
