@@ -235,38 +235,40 @@ class ProjectService:
             employee_id = member.get('employeeId')
             allocation = member.get('allocationPercent')
             role_id = member.get('roleId')
+            eng_name = member.get('engName') or f"Member {idx + 1}"
+            member_label = f"{eng_name} (#{idx + 1})"
             
             # Must provide either userId or employeeId
             if not user_id and not employee_id:
-                errors.append(f"Member {idx + 1}: userId or employeeId is required")
+                errors.append(f"{member_label}: userId or employeeId is required")
                 continue
             
             # Validate allocation percentage
             if allocation is None:
-                errors.append(f"Member {idx + 1}: allocationPercent is required")
+                errors.append(f"{member_label}: allocationPercent is required")
                 continue
             
             if not isinstance(allocation, int) or allocation < 0 or allocation > 100:
-                errors.append(f"Member {idx + 1}: allocationPercent must be between 0 and 100")
+                errors.append(f"{member_label}: allocationPercent must be between 0 and 100")
                 continue
             
             # Get employee UUID if employeeId provided
             if employee_id:
                 employee = EmployeeDAO.get_by_employee_id(employee_id)
                 if not employee:
-                    errors.append(f"Member {idx + 1}: Employee '{employee_id}' not found")
+                    errors.append(f"{member_label}: Employee '{employee_id}' not found")
                     continue
                 user_id = str(employee.id)
             else:
                 # Verify user_id exists
                 employee = EmployeeDAO.get_by_id(user_id)
                 if not employee:
-                    errors.append(f"Member {idx + 1}: Employee with ID '{user_id}' not found")
+                    errors.append(f"{member_label}: Employee with ID '{user_id}' not found")
                     continue
             
             # Check if user already exists in project
             if user_id in existing_user_ids:
-                errors.append(f"Member {idx + 1}: Employee is already a member of this project")
+                errors.append(f"{member_label}: Employee is already a member of this project")
                 continue
 
             existing_total_allocation = ProjectService._get_total_allocation_percent(user_id)
@@ -275,7 +277,7 @@ class ProjectService:
 
             if resulting_allocation > 100:
                 errors.append(
-                    f"Member {idx + 1}: Employee allocation exceeds 100% "
+                    f"{member_label}: Employee allocation exceeds 100% "
                     f"(current: {existing_total_allocation}%, requested: {requested_allocation}%, resulting: {resulting_allocation}%)"
                 )
                 continue
@@ -285,7 +287,7 @@ class ProjectService:
             if role_id:
                 resolved_role_id, role_error = RoleDAO._resolve_role_id(role_id)
                 if role_error:
-                    errors.append(f"Member {idx + 1}: {role_error}")
+                    errors.append(f"{member_label}: {role_error}")
                     continue
 
             pending_allocations[user_id] = requested_allocation
