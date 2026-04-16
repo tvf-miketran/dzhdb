@@ -562,7 +562,7 @@ def calculate_points_get():
             "logwork_comparison": logwork_comparison,
             "ticket_comparison": ticket_comparison,
             "average_ee": average_ee,
-            "total_current_member": FormulaService.get_active_employee_count(),
+            "total_current_member": FormulaService.get_employee_count_with_tickets(months, project_id=project_id),
         })
     _data["total_billable_point"] = round(total_billable_point, 3)
     return ApiResponse.success(

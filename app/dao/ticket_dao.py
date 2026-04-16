@@ -1,5 +1,5 @@
 
-from sqlalchemy import asc, desc, and_, or_
+from sqlalchemy import asc, desc, and_, or_, func
 from sqlalchemy.orm import joinedload
 from app.models.ticket import Ticket
 from app.models.employee import Employee
@@ -216,6 +216,25 @@ class TicketDAO:
             )
 
         return query.count()
+
+    @staticmethod
+    def count_distinct_employees_with_tickets(
+        month: int,
+        project_id: Optional[str] = None,
+    ) -> int:
+        """Count distinct active non-admin employees that have at least one ticket in the given month."""
+        query = (
+            db.session.query(func.count(func.distinct(Ticket.employee_id)))
+            .filter(Ticket.month == month)
+            .filter(
+                Ticket.employee.has(
+                    Employee.authorize_role != "ADMIN",
+                )
+            )
+        )
+        if project_id:
+            query = query.filter(Ticket.project_id == project_id)
+        return query.scalar() or 0
 
     @staticmethod
     def get_by_month_and_status_active_non_admin(

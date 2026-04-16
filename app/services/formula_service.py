@@ -191,6 +191,19 @@ class FormulaService:
         return EmployeeDAO.count_active_non_admin()
 
     @staticmethod
+    def get_employee_count_with_tickets(months: list, project_id: str = None) -> int:
+        """Return count of distinct employees with tickets.
+
+        Single month: distinct employees that have any ticket in that month.
+        Multiple months: take the maximum count across all months.
+        """
+        counts = [
+            TicketDAO.count_distinct_employees_with_tickets(month=m, project_id=project_id)
+            for m in months
+        ]
+        return max(counts) if counts else 0
+
+    @staticmethod
     def get_employees_total_ee() -> list:
         """Get all active non-admin employees with their total EE percent.
 
