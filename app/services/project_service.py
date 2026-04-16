@@ -51,6 +51,12 @@ class ProjectService:
         return None
 
     @staticmethod
+    def _get_total_allocation_percent(user_id: str) -> int:
+        """Get the employee's total EE allocation across all projects."""
+        memberships = ProjectDAO.get_all_memberships_by_user(user_id)
+        return sum((member.allocation_percent or 0) for member in memberships)
+
+    @staticmethod
     def get_all() -> List[Project]:
         """Get all projects"""
         return ProjectDAO.get_all()
@@ -218,6 +224,7 @@ class ProjectService:
         
         errors = []
         validated_members = []
+        pending_allocations: Dict[str, int] = {}
 
         # Get existing member user IDs
         existing_user_ids = {str(member.user_id) for member in project.project_members}
@@ -261,6 +268,18 @@ class ProjectService:
             if user_id in existing_user_ids:
                 errors.append(f"Member {idx + 1}: Employee is already a member of this project")
                 continue
+
+            existing_total_allocation = ProjectService._get_total_allocation_percent(user_id)
+            requested_allocation = pending_allocations.get(user_id, 0) + allocation
+            resulting_allocation = existing_total_allocation + requested_allocation
+
+            if resulting_allocation > 100:
+                errors.append(
+                    f"Member {idx + 1}: Employee allocation exceeds 100% "
+                    f"(current: {existing_total_allocation}%, requested: {requested_allocation}%, resulting: {resulting_allocation}%)"
+                )
+                continue
+
             # Resolve roleId: accepts UUID or role name
             resolved_role_id = None
             if role_id:
@@ -268,6 +287,8 @@ class ProjectService:
                 if role_error:
                     errors.append(f"Member {idx + 1}: {role_error}")
                     continue
+
+            pending_allocations[user_id] = requested_allocation
 
             validated_members.append({
                 'user_id': user_id,
