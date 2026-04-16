@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
 from decimal import Decimal
+from app.utils.number_parser import parse_decimal_value
 
 
 @dataclass
@@ -32,7 +33,9 @@ class CreateLogworkRequest:
             errors.append("logHour is required")
         else:
             try:
-                log_hours = Decimal(str(log_hours_raw))
+                log_hours = parse_decimal_value(log_hours_raw, None)
+                if log_hours is None:
+                    raise ValueError("Invalid numeric value")
                 if log_hours < 0:
                     errors.append("logHour must be greater than or equal to 0")
             except (ValueError, TypeError):
@@ -101,7 +104,9 @@ class UpdateLogworkRequest:
         log_hours_raw = data.get("logHour")
         if log_hours_raw is not None:
             try:
-                log_hours = Decimal(str(log_hours_raw))
+                log_hours = parse_decimal_value(log_hours_raw, None)
+                if log_hours is None:
+                    raise ValueError("Invalid numeric value")
                 if log_hours <= 0:
                     errors.append("logHour must be greater than 0")
             except (ValueError, TypeError):
