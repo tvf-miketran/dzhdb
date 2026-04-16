@@ -218,23 +218,26 @@ class TicketDAO:
         return query.count()
 
     @staticmethod
-    def count_distinct_employees_with_tickets(
+    def get_distinct_employee_ids_with_tickets(
         month: int,
         project_id: Optional[str] = None,
-    ) -> int:
-        """Count distinct active non-admin employees that have at least one ticket in the given month."""
+    ) -> set[str]:
+        """Return distinct non-admin employee IDs that have at least one ticket in the given month."""
         query = (
-            db.session.query(func.count(func.distinct(Ticket.employee_id)))
+            db.session.query(Ticket.employee_id)
             .filter(Ticket.month == month)
+            .filter(Ticket.employee_id.isnot(None))
             .filter(
                 Ticket.employee.has(
                     Employee.authorize_role != "ADMIN",
                 )
             )
+            .distinct()
         )
         if project_id:
             query = query.filter(Ticket.project_id == project_id)
-        return query.scalar() or 0
+
+        return {str(employee_id) for (employee_id,) in query.all() if employee_id is not None}
 
     @staticmethod
     def get_by_month_and_status_active_non_admin(

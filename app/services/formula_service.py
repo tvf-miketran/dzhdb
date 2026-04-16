@@ -191,17 +191,31 @@ class FormulaService:
         return EmployeeDAO.count_active_non_admin()
 
     @staticmethod
-    def get_employee_count_with_tickets(months: list, project_id: str = None) -> int:
-        """Return count of distinct employees with tickets.
+    def get_employee_count_with_activity(
+        months: List[int],
+        year: int = None,
+        project_id: str = None,
+    ) -> int:
+        """Return max distinct member count across months from tickets or logwork activity."""
+        if not months:
+            return 0
 
-        Single month: distinct employees that have any ticket in that month.
-        Multiple months: take the maximum count across all months.
-        """
-        counts = [
-            TicketDAO.count_distinct_employees_with_tickets(month=m, project_id=project_id)
-            for m in months
-        ]
-        return max(counts) if counts else 0
+        logwork_year = str(year) if year is not None else None
+        monthly_counts = []
+
+        for month in months:
+            ticket_members = TicketDAO.get_distinct_employee_ids_with_tickets(
+                month=month,
+                project_id=project_id,
+            )
+            logwork_members = LogworkDAO.get_distinct_user_ids_with_logwork(
+                month=str(month).zfill(2),
+                year=logwork_year,
+                project_id=project_id,
+            )
+            monthly_counts.append(len(ticket_members | logwork_members))
+
+        return max(monthly_counts) if monthly_counts else 0
 
     @staticmethod
     def get_employees_total_ee() -> list:
