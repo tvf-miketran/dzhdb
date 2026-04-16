@@ -164,6 +164,30 @@ class LogworkDAO:
         result = query.scalar()
         return float(result) if result else 0.0
 
+    @staticmethod
+    def get_distinct_user_ids_with_logwork(
+        month: str,
+        year: str = None,
+        project_id: str = None,
+    ) -> set[str]:
+        """Return distinct non-admin employee IDs that have logwork in the given month."""
+        query = (
+            db.session.query(Logwork.user_id)
+            .filter(Logwork.month == month)
+            .filter(
+                Logwork.employee.has(
+                    Employee.authorize_role != "ADMIN",
+                )
+            )
+            .distinct()
+        )
+        if year:
+            query = query.filter(Logwork.year == year)
+        if project_id:
+            query = query.filter(Logwork.project_id == project_id)
+
+        return {str(user_id) for (user_id,) in query.all() if user_id is not None}
+
     # ---------- CREATE ----------
     @staticmethod
     def create(
