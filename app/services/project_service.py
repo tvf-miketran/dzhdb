@@ -235,7 +235,7 @@ class ProjectService:
             employee_id = member.get('employeeId')
             allocation = member.get('allocationPercent')
             role_id = member.get('roleId')
-            eng_name = member.get('engName') or f"Member {idx + 1}"
+            eng_name = member.get('enFullName') or f"Member {idx + 1}"
             member_label = f"{eng_name} (#{idx + 1})"
             
             # Must provide either userId or employeeId
